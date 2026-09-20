@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "id": "com.vastsa.side-chat",
+  "name": "Side Chat",
+  "version": "0.1.0",
+  "description": "A docked sidebar chat that talks with your signed-in models, can attach the current session as context, and can send a reply back into that session.",
+  "i18n": {
+    "en": {
+      "name": "Side Chat",
+      "description": "A docked sidebar chat that talks with your signed-in models, can attach the current session as context, and can send a reply back into that session.",
+      "safetyNotes": "Uses your already signed-in models through the host (agent.complete); the plugin never sees API keys. desktop.control lets it list sessions, read a transcript, and send a prompt into a session. Conversations are stored only in this plugin's local data directory. No network of its own."
+    },
+    "zh-CN": {
+      "name": "侧边聊天",
+      "description": "停靠在右侧工作面板的独立聊天：走你已登录的模型，可把当前会话当上下文，也能把回复发回该会话。",
+      "safetyNotes": "通过宿主调用你已登录的模型（agent.complete），插件拿不到 API 密钥。desktop.control 用于列出会话、读取 transcript、向会话发送一条 prompt。对话只存在本插件本地数据目录，插件自身不联网。"
+    }
+  },
+  "author": "VastSa",
+  "license": "MIT",
+  "homepage": "https://github.com/vastsa/pi-desktop-side-chat",
+  "repository": "https://github.com/vastsa/pi-desktop-side-chat",
+  "main": "main.js",
+  "categories": ["productivity"],
+  "changelog": "Release 0.1.0: first release. Docked side chat with local history, host-owned completions, optional session context, and send-to-session.",
+  "safetyNotes": "Uses your already signed-in models through the host (agent.complete); the plugin never sees API keys. desktop.control lets it list sessions, read a transcript, and send a prompt into a session. Conversations are stored only in this plugin's local data directory. No network of its own.",
+  "ui": {
+    "panel": "renderer/index.html",
+    "width": 420,
+    "height": 720,
+    "title": {
+      "en": "Side Chat",
+      "zh-CN": "侧边聊天"
+    }
+  },
+  "contributes": {
+    "views": [
+      {
+        "id": "chat",
+        "title": {
+          "en": "Side Chat",
+          "zh-CN": "侧边聊天"
+        },
+        "icon": "chat",
+        "entry": "renderer/index.html",
+        "order": 15
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.vastsa.side-chat.open",
+        "title": "Side Chat: Open",
+        "keywords": ["side", "chat", "sidebar", "assistant", "侧边", "聊天", "旁路"],
+        "category": "Agent"
+      }
+    ],
+    "settings": [
+      {
+        "key": "modelKey",
+        "type": "string",
+        "default": "",
+        "title": "Model",
+        "description": "providerId/modelId used for side-chat completions."
+      },
+      {
+        "key": "thinkingLevel",
+        "type": "select",
+        "default": "low",
+        "title": "Thinking effort",
+        "enum": [
+          { "label": "off", "value": "off" },
+          { "label": "minimal", "value": "minimal" },
+          { "label": "low", "value": "low" },
+          { "label": "medium", "value": "medium" },
+          { "label": "high", "value": "high" }
+        ]
+      },
+      {
+        "key": "includeSession",
+        "type": "boolean",
+        "default": true,
+        "title": "Attach session by default",
+        "description": "Include the selected session transcript when sending a side-chat message."
+      }
+    ]
+  },
+  "permissions": [
+    "ui.view",
+    "ui.panel",
+    "models.list",
+    "agent.complete",
+    "desktop.control",
+    "clipboard.write"
+  ],
+  "engines": {
+    "piDesktop": ">=0.14.0"
+  },
+  "activationEvents": [
+    "onStartup",
+    "onCommand:com.vastsa.side-chat.open"
+  ]
+}

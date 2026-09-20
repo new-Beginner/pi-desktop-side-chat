@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="pi-plugin-chrome" content="v3" />
+    <title>Side Chat</title>
+    <script>window.__APPEARANCE_CACHE_KEY = "com.vastsa.side-chat.appearance.v1";</script>
+    <script src="./appearance-boot.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f1ec;
+        --card: #fffaf4;
+        --ink: #1b1714;
+        --muted: #74685e;
+        --line: #e4d9cc;
+        --accent: #c45c26;
+        --accent-ink: #fffaf4;
+        --user: #1b1714;
+        --user-ink: #fffaf4;
+        --danger: #b42318;
+        --ok: #2f6f4e;
+        --shadow: 0 8px 24px rgba(27, 23, 20, 0.08);
+        --titlebar: var(--pi-plugin-titlebar-height, 0px);
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #141210;
+        --card: #1c1916;
+        --ink: #f4eee7;
+        --muted: #a89b8e;
+        --line: #2c2722;
+        --accent: #e08a4f;
+        --accent-ink: #1b1714;
+        --user: #f4eee7;
+        --user-ink: #141210;
+        --danger: #ff7a6e;
+        --ok: #7dcaa4;
+        --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+        padding-top: var(--titlebar);
+        font: 13px/1.45 "PingFang SC", "Segoe UI", -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      button, select, textarea {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible, select:focus-visible, textarea:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .top {
+        position: sticky;
+        top: var(--titlebar);
+        z-index: 3;
+        display: grid;
+        gap: 8px;
+        padding: 10px 12px 8px;
+        background: color-mix(in oklab, var(--bg) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .brand h1 {
+        margin: 0;
+        flex: 1;
+        font-size: 15px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .icon-btn, .ghost {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 8px;
+        min-height: 28px;
+      }
+      .icon-btn {
+        width: 28px;
+        padding: 0;
+        display: grid;
+        place-items: center;
+      }
+      .ghost {
+        padding: 0 8px;
+        color: var(--muted);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+      }
+      select {
+        width: 100%;
+        min-height: 30px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        padding: 0 8px;
+      }
+      .toggles {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .chip {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: var(--muted);
+      }
+      .chip.on {
+        border-color: color-mix(in oklab, var(--accent) 55%, var(--line));
+        color: var(--ink);
+        background: color-mix(in oklab, var(--accent) 14%, var(--card));
+      }
+      .chip:disabled, .icon-btn:disabled, .send:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .log {
+        flex: 1;
+        overflow: auto;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .empty {
+        margin: auto;
+        max-width: 240px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .empty strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--ink);
+        font-size: 15px;
+      }
+      .msg {
+        max-width: 92%;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        box-shadow: var(--shadow);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .msg.user {
+        align-self: flex-end;
+        background: var(--user);
+        color: var(--user-ink);
+        border-color: transparent;
+      }
+      .msg.error {
+        border-color: color-mix(in oklab, var(--danger) 50%, var(--line));
+        color: var(--danger);
+      }
+      .msg.pending {
+        color: var(--muted);
+        font-style: italic;
+      }
+      .msg-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .msg-actions button {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 0;
+        min-height: 0;
+      }
+      .msg.user .msg-actions button { color: color-mix(in oklab, var(--user-ink) 70%, transparent); }
+      .composer {
+        padding: 8px 12px 12px;
+        border-top: 1px solid var(--line);
+        background: var(--bg);
+      }
+      .box {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: end;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--card);
+        padding: 8px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 44px;
+        max-height: 140px;
+        border: 0;
+        resize: none;
+        background: transparent;
+        padding: 4px;
+      }
+      .send {
+        border: 0;
+        border-radius: 9px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        min-height: 32px;
+        padding: 0 12px;
+        font-weight: 600;
+      }
+      .hint {
+        margin: 6px 2px 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .drawer {
+        position: fixed;
+        inset: var(--titlebar) 0 0 0;
+        background: color-mix(in oklab, #000 38%, transparent);
+        z-index: 5;
+        display: none;
+      }
+      .drawer.open { display: block; }
+      .drawer-card {
+        width: min(320px, 86vw);
+        height: 100%;
+        background: var(--bg);
+        border-right: 1px solid var(--line);
+        padding: 12px;
+        overflow: auto;
+      }
+.conv {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+}
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1 data-i18n="title"></h1>
+        <button class="icon-btn" id="newBtn" type="button" data-i18n-title="newChat">+</button>
+        <button class="icon-btn" id="listBtn" type="button" data-i18n-title="chats">≡</button>
+      </div>
+      <div class="row">
+        <select id="sessionSelect" data-i18n-title="session"></select>
+        <select id="modelSelect" data-i18n-title="model"></select>
+      </div>
+      <div class="toggles">
+        <button class="chip" id="ctxBtn" type="button" data-i18n="includeSession"></button>
+        <button class="chip" id="insertBtn" type="button" data-i18n="insert"></button>
+        <select id="thinkSelect" data-i18n-title="thinking" style="width:auto;min-width:86px">
+          <option value="off">off</option>
+          <option value="minimal">min</option>
+          <option value="low">low</option>
+          <option value="medium">med</option>
+          <option value="high">high</option>
+        </select>
+      </div>
+    </header>
+    <div class="log" id="log"></div>
+    <form class="composer" id="form">
+      <div class="box">
+        <textarea id="input" rows="2"></textarea>
+        <button class="send" id="sendBtn" type="submit" data-i18n="send"></button>
+      </div>
+      <div class="hint" id="hint"></div>
+    </form>
+    <div class="drawer" id="drawer">
+      <div class="drawer-card">
+        <div class="brand" style="margin-bottom:10px">
+          <h1 data-i18n="chats"></h1>
+          <button class="ghost" id="closeList" type="button" data-i18n="closeList"></button>
+        </div>
+        <div id="convList"></div>
+      </div>
+    </div>
+    <script src="./appearance.js"></script>
+    <script>
+      const COPY = {
+        en: {
+          title: "Side Chat",
+          newChat: "New",
+          chats: "Chats",
+          emptyTitle: "Ask on the side",
+          emptyHint: "Independent from the main session. Attach its transcript if you want, then send a reply back.",
+          placeholder: "Ask anything…",
+          send: "Send",
+          includeSession: "Use session",
+          insert: "Send to session",
+          copy: "Copy",
+          copied: "Copied",
+          model: "Model",
+          thinking: "Effort",
+          session: "Session",
+          noSession: "No session",
+          noModel: "No signed-in model. Add one in Settings.",
+          sending: "Thinking…",
+          rateLimited: "Rate limited. Wait a few seconds.",
+          error: "Something went wrong.",
+          insertOk: "Sent to the session",
+          insertBusy: "Session is busy",
+          insertNeed: "Pick a session first",
+          closeList: "Close",
+          deleteChat: "Delete",
+          unnamed: "Untitled",
+          thisProject: "This project",
+          moreSessions: "Other projects"
+        },
+        "zh-CN": {
+          title: "侧边聊天",
+          newChat: "新对话",
+          chats: "对话",
+          emptyTitle: "在旁边问",
+          emptyHint: "和主会话互不干扰。需要时带上当前会话上下文，也可以把回复发回去。",
+          placeholder: "随便问…",
+          send: "发送",
+          includeSession: "带上会话",
+          insert: "发回会话",
+          copy: "复制",
+          copied: "已复制",
+          model: "模型",
+          thinking: "推理",
+          session: "会话",
+          noSession: "没有会话",
+          noModel: "还没有已登录的模型，去设置里加一个。",
+          sending: "思考中…",
+          rateLimited: "触发限速，稍等几秒。",
+          error: "出错了。",
+          insertOk: "已发回会话",
+          insertBusy: "会话正忙",
+          insertNeed: "先选一个会话",
+          closeList: "关闭",
+          deleteChat: "删除",
+          unnamed: "未命名",
+          thisProject: "当前项目",
+          moreSessions: "其他项目"
+        }
+      };
+
+      const state = {
+        locale: "en",
+        snapshot: { activeId: null, conversations: [] },
+        settings: { modelKey: "", thinkingLevel: "low", includeSession: true, sessionId: "" },
+        models: [],
+        sessions: [],
+        pending: false,
+        jobId: ""
+      };
+
+      function t(key) {
+        const table = COPY[state.locale] || COPY.en;
+        return table[key] || COPY.en[key] || key;
+      }
+
+      function localeOf(raw) {
+        const value = String(raw || "").toLowerCase();
+        return value.startsWith("zh") ? "zh-CN" : "en";
+      }
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+
+      function applyCopy() {
+        document.documentElement.lang = state.locale;
+        document.querySelectorAll("[data-i18n]").forEach((node) => {
+          node.textContent = t(node.getAttribute("data-i18n"));
+        });
+        document.querySelectorAll("[data-i18n-title]").forEach((node) => {
+          node.title = t(node.getAttribute("data-i18n-title"));
+        });
+        $("input").placeholder = t("placeholder");
+      }
+
+      async function invoke(channel, payload) {
+        if (!window.pluginBridge?.invoke) throw new Error("pluginBridge missing");
+        return window.pluginBridge.invoke(channel, payload || {});
+      }
+
+      function activeConv() {
+        return state.snapshot.conversations.find((item) => item.id === state.snapshot.activeId)
+          || state.snapshot.conversations[0]
+          || { messages: [] };
+      }
+
+      function fillSelect(node, groups) {
+        const current = node.value;
+        node.replaceChildren();
+        for (const group of groups) {
+          const parent = group.label ? document.createElement("optgroup") : node;
+          if (group.label) {
+            parent.label = group.label;
+            node.appendChild(parent);
+          }
+          for (const option of group.options) {
+            const el = document.createElement("option");
+            el.value = option.value;
+            el.textContent = option.label;
+            parent.appendChild(el);
+          }
+        }
+        if ([...node.options].some((item) => item.value === current)) node.value = current;
+      }
+
+      function renderSelects() {
+        const project = state.sessions.filter((item) => item.currentProject);
+        const other = state.sessions.filter((item) => !item.currentProject);
+        const sessionOptions = [];
+        if (!state.sessions.length) {
+          sessionOptions.push({ label: "", options: [{ value: "", label: t("noSession") }] });
+        } else {
+          if (project.length) sessionOptions.push({ label: t("thisProject"), options: project.map(sessionOption) });
+          if (other.length) sessionOptions.push({ label: project.length ? t("moreSessions") : "", options: other.map(sessionOption) });
+        }
+        fillSelect($("sessionSelect"), sessionOptions);
+        if (state.settings.sessionId) $("sessionSelect").value = state.settings.sessionId;
+
+        const modelOptions = state.models.length
+          ? [{ label: "", options: state.models.map((model) => ({ value: model.key, label: model.alias || model.label || model.key })) }]
+          : [{ label: "", options: [{ value: "", label: t("noModel") }] }];
+        fillSelect($("modelSelect"), modelOptions);
+        if (state.settings.modelKey) $("modelSelect").value = state.settings.modelKey;
+        $("thinkSelect").value = state.settings.thinkingLevel || "low";
+        $("ctxBtn").classList.toggle("on", state.settings.includeSession === true);
+        $("sendBtn").disabled = state.pending || !state.models.length;
+      }
+
+      function sessionOption(session) {
+        const title = session.title || session.id.slice(0, 8);
+        return { value: session.id, label: title };
+      }
+
+      function renderMessages() {
+        const log = $("log");
+        const conv = activeConv();
+        const messages = conv.messages || [];
+        log.replaceChildren();
+        if (!messages.length && !state.pending) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          const title = document.createElement("strong");
+          title.textContent = t("emptyTitle");
+          const hint = document.createElement("div");
+          hint.textContent = t("emptyHint");
+          empty.append(title, hint);
+          log.appendChild(empty);
+          return;
+        }
+        for (const message of messages) {
+          log.appendChild(renderMsg(message));
+        }
+        if (state.pending) {
+          const pending = document.createElement("div");
+          pending.className = "msg pending";
+          pending.textContent = t("sending");
+          log.appendChild(pending);
+        }
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function renderMsg(message) {
+        const node = document.createElement("div");
+        node.className = "msg" + (message.role === "user" ? " user" : "") + (message.error ? " error" : "");
+        node.textContent = message.error ? formatError(message.content) : message.content;
+        if (message.role === "assistant" && !message.error) {
+          const actions = document.createElement("div");
+          actions.className = "msg-actions";
+          const copyBtn = document.createElement("button");
+          copyBtn.type = "button";
+          copyBtn.textContent = t("copy");
+          copyBtn.addEventListener("click", () => copyText(message.content, copyBtn));
+          actions.appendChild(copyBtn);
+          node.appendChild(actions);
+        }
+        return node;
+      }
+
+      function formatError(content) {
+        if (content === "RATE_LIMITED") return t("rateLimited");
+        return content || t("error");
+      }
+
+      function renderConvs() {
+        const list = $("convList");
+        list.replaceChildren();
+        for (const conv of state.snapshot.conversations) {
+          const row = document.createElement("div");
+          row.className = "conv" + (conv.id === state.snapshot.activeId ? " active" : "");
+          const title = document.createElement("div");
+          title.textContent = conv.title || t("unnamed");
+          const meta = document.createElement("small");
+          meta.textContent = (conv.messages || []).length ? String((conv.messages || []).length) : "";
+          row.append(title, meta);
+          row.addEventListener("click", async () => {
+            const result = await invoke("chat.select", { id: conv.id });
+            state.snapshot = result.snapshot;
+            $("drawer").classList.remove("open");
+            renderAll();
+          });
+          const del = document.createElement("button");
+          del.type = "button";
+          del.className = "ghost";
+          del.textContent = t("deleteChat");
+          del.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const result = await invoke("chat.delete", { id: conv.id });
+            state.snapshot = result.snapshot;
+            renderAll();
+          });
+          row.appendChild(del);
+          list.appendChild(row);
+        }
+      }
+
+      function renderAll() {
+        applyCopy();
+        renderSelects();
+        renderMessages();
+        renderConvs();
+      }
+
+      async function copyText(text, button) {
+        try {
+          await invoke("chat.copy", { text });
+          button.textContent = t("copied");
+          setTimeout(() => { button.textContent = t("copy"); }, 1200);
+        } catch {
+          button.textContent = t("error");
+        }
+      }
+
+      function hint(text, ok) {
+        $("hint").textContent = text || "";
+        $("hint").className = "hint" + (ok ? " status" : "");
+      }
+
+      async function saveSettings(patch) {
+        const result = await invoke("chat.setSettings", patch);
+        state.settings = result.settings;
+      }
+
+      async function waitJob(jobId) {
+        for (let i = 0; i < 240; i += 1) {
+          const result = await invoke("chat.poll", { jobId });
+          if (result.status === "running" || result.status === "missing" && i < 3) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            continue;
+          }
+          return result;
+        }
+        return { status: "error", error: t("error"), snapshot: state.snapshot };
+      }
+
+      $("form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const text = $("input").value.trim();
+        if (!text || state.pending) return;
+        state.pending = true;
+        $("input").value = "";
+        renderAll();
+        try {
+          const result = await invoke("chat.send", {
+            text,
+            includeSession: state.settings.includeSession,
+            sessionId: $("sessionSelect").value,
+            modelKey: $("modelSelect").value,
+            thinkingLevel: $("thinkSelect").value
+          });
+          state.snapshot = result.snapshot;
+          state.settings = result.settings || state.settings;
+          state.jobId = result.jobId;
+          renderAll();
+          const done = await waitJob(result.jobId);
+          state.snapshot = done.snapshot || state.snapshot;
+          if (done.status === "error") hint(formatError(done.error || done.code));
+          else hint("");
+        } catch (error) {
+          hint(error?.message || t("error"));
+        } finally {
+          state.pending = false;
+          state.jobId = "";
+          renderAll();
+          $("input").focus();
+        }
+      });
+
+      $("input").addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          $("form").requestSubmit();
+        }
+      });
+
+      $("newBtn").addEventListener("click", async () => {
+        const result = await invoke("chat.new");
+        state.snapshot = result.snapshot;
+        renderAll();
+        $("input").focus();
+      });
+      $("listBtn").addEventListener("click", () => $("drawer").classList.add("open"));
+      $("closeList").addEventListener("click", () => $("drawer").classList.remove("open"));
+      $("drawer").addEventListener("click", (event) => {
+        if (event.target === $("drawer")) $("drawer").classList.remove("open");
+      });
+      $("ctxBtn").addEventListener("click", async () => {
+        await saveSettings({ includeSession: !state.settings.includeSession });
+        renderAll();
+      });
+      $("sessionSelect").addEventListener("change", () => saveSettings({ sessionId: $("sessionSelect").value }));
+      $("modelSelect").addEventListener("change", () => saveSettings({ modelKey: $("modelSelect").value }));
+      $("thinkSelect").addEventListener("change", () => saveSettings({ thinkingLevel: $("thinkSelect").value }));
+      $("insertBtn").addEventListener("click", async () => {
+        const last = [...(activeConv().messages || [])].reverse().find((item) => item.role === "assistant" && !item.error);
+        if (!last) return;
+        if (!$("sessionSelect").value) {
+          hint(t("insertNeed"));
+          return;
+        }
+        try {
+          await invoke("chat.insert", { sessionId: $("sessionSelect").value, text: last.content });
+          hint(t("insertOk"), true);
+        } catch (error) {
+          const message = String(error?.message || "");
+          hint(message.toLowerCase().includes("busy") ? t("insertBusy") : (message || t("error")));
+        }
+      });
+
+      async function boot() {
+        try {
+          const data = await invoke("chat.bootstrap");
+          state.snapshot = data.snapshot;
+          state.settings = data.settings;
+          state.models = data.models || [];
+          state.sessions = data.sessions || [];
+          state.locale = localeOf(data.locale);
+        } catch (error) {
+          hint(error?.message || t("error"));
+        }
+        renderAll();
+      }
+
+      if (window.__appearance) {
+        window.__appearance.onLocaleChange((locale) => {
+          state.locale = localeOf(locale);
+          renderAll();
+        });
+        window.__appearance.init(window.pluginBridge);
+      }
+      boot();
+    </script>
+  </body>
+  </html>
+</html>
