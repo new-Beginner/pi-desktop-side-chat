@@ -1,0 +1,2 @@
+# Preserve vendored upstream assets and license text byte-for-byte.
+renderer/vendor/** -text -whitespace

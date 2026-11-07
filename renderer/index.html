@@ -10,44 +10,46 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f4f1ec;
-        --card: #fffaf4;
-        --ink: #1b1714;
-        --muted: #74685e;
-        --line: #e4d9cc;
-        --accent: #c45c26;
-        --accent-ink: #fffaf4;
-        --user: #1b1714;
-        --user-ink: #fffaf4;
+        --bg: #f5faff;
+        --card: #ffffff;
+        --ink: #183b5b;
+        --muted: #617d96;
+        --line: #dbe8f2;
+        --accent: #2776b5;
+        --accent-ink: #ffffff;
+        --user: #e2f0fc;
+        --user-ink: #183b5b;
         --danger: #b42318;
-        --ok: #2f6f4e;
-        --shadow: 0 8px 24px rgba(27, 23, 20, 0.08);
+        --ok: #23755a;
+        --shadow: none;
         --titlebar: var(--pi-plugin-titlebar-height, 0px);
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --bg: #141210;
-        --card: #1c1916;
-        --ink: #f4eee7;
-        --muted: #a89b8e;
-        --line: #2c2722;
-        --accent: #e08a4f;
-        --accent-ink: #1b1714;
-        --user: #f4eee7;
-        --user-ink: #141210;
-        --danger: #ff7a6e;
-        --ok: #7dcaa4;
-        --shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+        --bg: #152332;
+        --card: #1b2c3d;
+        --ink: #e2edf7;
+        --muted: #9bb2c7;
+        --line: #32485c;
+        --accent: #80bcf0;
+        --accent-ink: #102335;
+        --user: #244663;
+        --user-ink: #e2edf7;
+        --danger: #ff9a91;
+        --ok: #87cbb2;
+        --shadow: none;
       }
       * { box-sizing: border-box; }
       html, body {
         height: 100%;
+        overflow: hidden;
         margin: 0;
       }
       body {
         display: flex;
         flex-direction: column;
-        min-height: 100%;
+        min-height: 0;
+        min-width: 0;
         padding-top: var(--titlebar);
         font: 13px/1.45 "PingFang SC", "Segoe UI", -apple-system, sans-serif;
         background: var(--bg);
@@ -60,7 +62,7 @@
       button {
         cursor: pointer;
       }
-      button:focus-visible, select:focus-visible, textarea:focus-visible {
+      button:focus-visible, select:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
@@ -71,8 +73,7 @@
         display: grid;
         gap: 8px;
         padding: 10px 12px 8px;
-        background: color-mix(in oklab, var(--bg) 88%, transparent);
-        backdrop-filter: blur(10px);
+        background: var(--bg);
         border-bottom: 1px solid var(--line);
       }
       .brand {
@@ -91,10 +92,10 @@
         border: 1px solid var(--line);
         background: var(--card);
         border-radius: 8px;
-        min-height: 28px;
+        min-height: 32px;
       }
       .icon-btn {
-        width: 28px;
+        width: 32px;
         padding: 0;
         display: grid;
         place-items: center;
@@ -103,14 +104,15 @@
         padding: 0 8px;
         color: var(--muted);
       }
-      .row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
-      }
+      .history-field { display: grid; gap: 5px; min-width: 0; }
+      .history-field > span, .project-label { color: var(--muted); font-size: 11px; }
+      .project-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       select {
         width: 100%;
-        min-height: 30px;
+        min-width: 0;
+        height: 32px;
+        min-height: 32px;
+        text-overflow: ellipsis;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--card);
@@ -118,13 +120,15 @@
       }
       .toggles {
         display: flex;
+        flex-wrap: nowrap;
         gap: 6px;
         align-items: center;
       }
       .chip {
         border: 1px solid var(--line);
         background: var(--card);
-        border-radius: 999px;
+        border-radius: 8px;
+        min-height: 32px;
         padding: 4px 9px;
         color: var(--muted);
       }
@@ -139,8 +143,12 @@
       }
       .log {
         flex: 1;
+        min-height: 0;
+        min-width: 0;
         overflow: auto;
         padding: 12px;
+        background: var(--card);
+        border-radius: 8px;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -158,7 +166,8 @@
         font-size: 15px;
       }
       .msg {
-        max-width: 92%;
+        min-width: 0;
+        max-width: 100%;
         padding: 8px 10px;
         border-radius: 12px;
         border: 1px solid var(--line);
@@ -167,8 +176,26 @@
         white-space: pre-wrap;
         word-break: break-word;
       }
+      .msg:has(.markdown) { white-space: normal; width: 100%; }
+      .markdown { line-height: 1.65; overflow-wrap: anywhere; min-width: 0; overflow-x: auto; }
+      .markdown > :first-child { margin-top: 0; }
+      .markdown > :last-child { margin-bottom: 0; }
+      .markdown p, .markdown ul, .markdown ol, .markdown blockquote, .markdown pre { margin: 0.6em 0; }
+      .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { line-height: 1.35; margin: 0.9em 0 0.4em; font-weight: 650; }
+      .markdown h1 { font-size: 1.35em; } .markdown h2 { font-size: 1.2em; } .markdown h3 { font-size: 1.1em; }
+      .markdown ul, .markdown ol { padding-left: 1.6em; }
+      .markdown li + li { margin-top: 0.25em; }
+      .markdown code { font-family: Consolas, "SFMono-Regular", monospace; font-size: 0.92em; background: color-mix(in srgb, var(--accent) 8%, var(--card)); padding: 0.1em 0.3em; border-radius: 4px; }
+      .markdown pre { max-width: 100%; overflow-x: auto; padding: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--bg)); border: 1px solid var(--line); border-radius: 6px; white-space: pre; overflow-wrap: normal; }
+      .markdown pre code { background: none; padding: 0; border-radius: 0; }
+      .markdown a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+      .markdown blockquote { margin-left: 0; padding-left: 10px; color: var(--muted); border-left: 3px solid var(--line); }
+      .markdown table { border-collapse: collapse; font-size: 0.95em; }
+      .markdown th, .markdown td { border: 1px solid var(--line); padding: 5px 8px; }
+      .markdown hr { border: 0; border-top: 1px solid var(--line); }
       .msg.user {
         align-self: flex-end;
+        max-width: 92%;
         background: var(--user);
         color: var(--user-ink);
         border-color: transparent;
@@ -198,22 +225,53 @@
         padding: 8px 12px 12px;
         border-top: 1px solid var(--line);
         background: var(--bg);
+        container-type: inline-size;
       }
       .box {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 8px;
-        align-items: end;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--card);
         padding: 8px;
       }
+      .composer-footer { --model-min-width: 0px; --footer-control-height: 24px; position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 8px; }
+      .composer-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+      .composer-actions .send { flex: none; }
+      .context-toggle { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 4px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; }
+      .composer-footer svg { width: 18px; height: 18px; flex: none; }
+      .composer-footer .model-chevron { width: 12px; height: 12px; color: var(--muted); }
+      .switch-track { position: relative; width: 32px; height: 18px; border-radius: 999px; background: var(--line); }
+      .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0002; }
+      .context-toggle[aria-checked="true"] .switch-track { background: var(--accent); }
+      .context-toggle[aria-checked="true"] .switch-track::after { transform: translateX(14px); }
+      .model-control { position: static; display: flex; justify-content: flex-end; min-width: min(var(--model-min-width), 100%); }
+      .model-trigger { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; min-height: 32px; padding: 3px 6px; border: 0; border-radius: 6px; color: var(--ink); background: transparent; }
+      .composer-footer .context-toggle, .composer-footer .return-draft, .composer-footer .send { height: var(--footer-control-height); min-height: var(--footer-control-height); padding-block: 0; }
+      .model-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .thinking-value { flex: none; padding: 1px 6px; border-radius: 5px; font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+      .model-menu { position: absolute; bottom: calc(100% + 6px); right: 0; width: min(440px, 100%); z-index: 6; display: grid; grid-template-rows: minmax(0, 1fr) auto; max-height: calc(100dvh - var(--titlebar) - 160px); background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 18px #0002; overflow: hidden; }
+      .model-menu[hidden] { display: none; }
+      .model-body { display: grid; grid-template-columns: 100px minmax(0, 1fr); height: min(230px, 32dvh); min-height: 0; }
+      .model-providers, .model-options { min-width: 0; overflow: auto; padding: 6px; }
+      .model-providers { border-right: 1px solid var(--line); }
+      .model-filter, .model-option { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; }
+      .model-filter > :first-child, .model-option .model-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .model-count, .model-provider { font-size: 11px; color: var(--muted); }
+      .model-provider { max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .model-filter:hover, .model-option:hover, .thinking-option:hover { background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+      .model-filter[aria-pressed="true"], .model-option[aria-selected="true"], .thinking-option[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+      .model-thinking { display: flex; align-items: center; gap: 6px; padding: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+      .thinking-options { display: flex; flex: 1; flex-wrap: wrap; gap: 2px; }
+      .thinking-option { flex: 1; padding: 4px; border: 0; border-radius: 5px; color: var(--ink); background: transparent; }
+      .composer-footer[data-model-stacked="true"] { grid-template-columns: minmax(0, 1fr) auto; }
+      .composer-footer[data-model-stacked="true"] .model-control { grid-column: 1 / -1; grid-row: 1; }
+      .composer-footer[data-model-stacked="true"] .context-toggle { grid-column: 1; grid-row: 2; justify-self: start; }
+      .composer-footer[data-model-stacked="true"] .composer-actions { grid-column: 2; grid-row: 2; }
       textarea {
         width: 100%;
         min-height: 44px;
         max-height: 140px;
         border: 0;
+        outline: none;
         resize: none;
         background: transparent;
         padding: 4px;
@@ -248,18 +306,19 @@
         padding: 12px;
         overflow: auto;
       }
-.conv {
-  width: 100%;
-  text-align: left;
-  border: 1px solid var(--line);
-  background: var(--card);
-  border-radius: 10px;
-  padding: 8px;
-  margin-bottom: 8px;
-  cursor: pointer;
-  display: grid;
-  gap: 6px;
-}
+      .history-field { margin-bottom: 10px; }
+      .history-note { font-size: 12px; color: var(--muted); margin: 8px 0; }
+      #returnBtn { margin-bottom: 8px; }
+      .conv {
+        width: 100%; min-width: 0; text-align: left;
+        border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+        padding: 10px; margin-bottom: 8px; cursor: pointer;
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px;
+      }
+      .conv > div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .conv > small { grid-column: 1; color: var(--muted); }
+      .conv > button { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+      .conv.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
     </style>
   </head>
   <body>
@@ -269,27 +328,39 @@
         <button class="icon-btn" id="newBtn" type="button" data-i18n-title="newChat">+</button>
         <button class="icon-btn" id="listBtn" type="button" data-i18n-title="chats">≡</button>
       </div>
-      <div class="row">
-        <select id="sessionSelect" data-i18n-title="session"></select>
-        <select id="modelSelect" data-i18n-title="model"></select>
-      </div>
-      <div class="toggles">
-        <button class="chip" id="ctxBtn" type="button" data-i18n="includeSession"></button>
-        <button class="chip" id="insertBtn" type="button" data-i18n="insert"></button>
-        <select id="thinkSelect" data-i18n-title="thinking" style="width:auto;min-width:86px">
-          <option value="off">off</option>
-          <option value="minimal">min</option>
-          <option value="low">low</option>
-          <option value="medium">med</option>
-          <option value="high">high</option>
-        </select>
-      </div>
     </header>
+    <div class="project-label" id="projectLabel" style="padding:8px 12px 0"></div>
+    <div class="history-note" id="historyNote" style="padding:0 12px" hidden></div>
+    <button class="ghost" id="returnBtn" type="button" data-i18n="returnCurrent" hidden></button>
     <div class="log" id="log"></div>
     <form class="composer" id="form">
       <div class="box">
         <textarea id="input" rows="2"></textarea>
-        <button class="send" id="sendBtn" type="submit" data-i18n="send"></button>
+      </div>
+      <div class="composer-footer" data-model-stacked="true">
+        <button class="context-toggle" id="ctxBtn" type="button" role="switch" aria-checked="false" data-i18n-title="includeSession" data-i18n-label="includeSession">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18v3l4-3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 1 3Z"/><path d="M8 9h8M8 13h5"/></svg>
+          <span class="switch-track" aria-hidden="true"></span>
+        </button>
+        <div class="model-control" id="modelControl">
+          <button class="model-trigger" id="modelMenuButton" type="button" aria-haspopup="dialog" aria-controls="modelMenu" aria-expanded="false">
+            <span class="model-name" id="modelValue"></span><span class="thinking-value" id="thinkingValue"></span><svg class="model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="model-menu" id="modelMenu" role="dialog" data-i18n-title="model" hidden>
+            <div class="model-body"><div class="model-providers" id="modelProviders"></div><div class="model-options" id="modelOptions" role="listbox" data-i18n-title="model"></div></div>
+            <div class="model-thinking"><span data-i18n="thinking"></span><div class="thinking-options" id="thinkingOptions"></div></div>
+          </div>
+          <select id="modelSelect" hidden></select>
+          <select id="thinkSelect" hidden>
+            <option value="off">off</option><option value="minimal">min</option><option value="low">low</option><option value="medium">med</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option>
+          </select>
+        </div>
+        <div class="composer-actions">
+          <button class="icon-btn return-draft" id="insertBtn" type="button" data-i18n-title="insert" data-i18n-label="insert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 4-5 5 5 5M4 9h10a6 6 0 0 1 0 12h-2"/></svg>
+          </button>
+          <button class="send" id="sendBtn" type="submit" data-i18n="send"></button>
+        </div>
       </div>
       <div class="hint" id="hint"></div>
     </form>
@@ -299,9 +370,13 @@
           <h1 data-i18n="chats"></h1>
           <button class="ghost" id="closeList" type="button" data-i18n="closeList"></button>
         </div>
+        <label class="history-field"><span data-i18n="historyProject"></span><select id="historySelect"></select></label>
         <div id="convList"></div>
       </div>
     </div>
+    <script src="./vendor/marked.umd.js"></script>
+    <script src="./vendor/purify.min.js"></script>
+    <script src="./markdown.js"></script>
     <script src="./appearance.js"></script>
     <script>
       const COPY = {
@@ -310,11 +385,11 @@
           newChat: "New",
           chats: "Chats",
           emptyTitle: "Ask on the side",
-          emptyHint: "Independent from the main session. Attach its transcript if you want, then send a reply back.",
+          emptyHint: "Independent from the main session. Attach context if needed, or return a reply to the main input without sending.",
           placeholder: "Ask anything…",
           send: "Send",
           includeSession: "Use session",
-          insert: "Send to session",
+          insert: "Return reply to main input (do not send)",
           copy: "Copy",
           copied: "Copied",
           model: "Model",
@@ -325,25 +400,34 @@
           sending: "Thinking…",
           rateLimited: "Rate limited. Wait a few seconds.",
           error: "Something went wrong.",
-          insertOk: "Sent to the session",
-          insertBusy: "Session is busy",
-          insertNeed: "Pick a session first",
+          insertOk: "Placed in the main input; not sent",
+          insertBusy: "A draft return is already pending",
+          draftUnavailable: "Main input unavailable. Reload the development plugin and grant renderer.extension.",
+          draftStale: "The main draft changed. Please try again.",
+          draftTooLarge: "The reply exceeds the host's 32 KiB draft insertion limit.",
+          insertNeed: "Open a session first",
           closeList: "Close",
           deleteChat: "Delete",
           unnamed: "Untitled",
-          thisProject: "This project",
-          moreSessions: "Other projects"
+          thisProject: "Current project",
+          allModels: "All models",
+          historyProject: "Project history",
+          legacy: "Legacy history (unassigned)",
+          general: "No project",
+          returnCurrent: "Return to current project",
+          browsing: "Viewing another project's history (read-only).",
+          sessionChanged: "The current session changed. Please send again.",
         },
         "zh-CN": {
           title: "侧边聊天",
           newChat: "新对话",
           chats: "对话",
           emptyTitle: "在旁边问",
-          emptyHint: "和主会话互不干扰。需要时带上当前会话上下文，也可以把回复发回去。",
+          emptyHint: "和主会话互不干扰。可附带当前会话背景，或把回复放回主输入框，确认后再发送。",
           placeholder: "随便问…",
           send: "发送",
           includeSession: "带上会话",
-          insert: "发回会话",
+          insert: "放回主输入框（不发送）",
           copy: "复制",
           copied: "已复制",
           model: "模型",
@@ -354,24 +438,37 @@
           sending: "思考中…",
           rateLimited: "触发限速，稍等几秒。",
           error: "出错了。",
-          insertOk: "已发回会话",
-          insertBusy: "会话正忙",
-          insertNeed: "先选一个会话",
+          insertOk: "已放回主输入框，未发送",
+          insertBusy: "另一条回填请求尚未完成",
+          draftUnavailable: "主输入框不可用，请重新加载开发插件并确认 renderer.extension 授权。",
+          draftStale: "主输入框已变化，请重新回填。",
+          draftTooLarge: "回复超过宿主单次回填的 32 KiB 限制。",
+          insertNeed: "请先打开一个会话",
           closeList: "关闭",
           deleteChat: "删除",
           unnamed: "未命名",
           thisProject: "当前项目",
-          moreSessions: "其他项目"
+          allModels: "全部模型",
+          historyProject: "项目历史",
+          legacy: "旧版历史（未归类）",
+          general: "无项目",
+          returnCurrent: "返回当前项目",
+          browsing: "正在浏览其他项目历史（只读），发送前请返回当前项目。",
+          sessionChanged: "当前会话已变化，请重新发送。",
         }
       };
 
       const state = {
         locale: "en",
         snapshot: { activeId: null, conversations: [] },
-        settings: { modelKey: "", thinkingLevel: "low", includeSession: true, sessionId: "" },
+        settings: { modelKey: "", thinkingLevel: "low", includeSession: true },
         models: [],
-        sessions: [],
+        context: null,
+        projects: [],
+        contextError: false,
         pending: false,
+        inserting: false,
+        pendingProjectKey: "",
         jobId: ""
       };
 
@@ -397,6 +494,9 @@
         document.querySelectorAll("[data-i18n-title]").forEach((node) => {
           node.title = t(node.getAttribute("data-i18n-title"));
         });
+        document.querySelectorAll("[data-i18n-label]").forEach((node) => {
+          node.setAttribute("aria-label", t(node.getAttribute("data-i18n-label")));
+        });
         $("input").placeholder = t("placeholder");
       }
 
@@ -409,6 +509,56 @@
         return state.snapshot.conversations.find((item) => item.id === state.snapshot.activeId)
           || state.snapshot.conversations[0]
           || { messages: [] };
+      }
+
+      let contextRequest = 0;
+      let viewRequest = 0;
+
+      function isCurrentHistory() {
+        return Boolean(state.context && state.snapshot.projectKey === state.context.projectKey);
+      }
+
+      function scope() {
+        return { sessionId: state.context?.sessionId || "", projectKey: state.context?.projectKey || "" };
+      }
+
+      function projectName(key, name) {
+        return key === "legacy" ? t("legacy") : key === "general" ? t("general") : name || key;
+      }
+
+      async function refreshContext() {
+        const request = ++contextRequest;
+        try {
+          const data = await invoke("chat.context");
+          if (request !== contextRequest) return;
+          const changed = state.context?.sessionId !== data.context.sessionId || state.context?.projectKey !== data.context.projectKey;
+          const recovered = state.contextError;
+          state.contextError = false;
+          state.projects = data.projects || [];
+          state.context = data.context;
+          if (changed) {
+            ++viewRequest;
+            state.snapshot = data.snapshot;
+            hint("");
+            renderAll();
+          } else if (recovered) renderSelects();
+        } catch (error) {
+          if (request !== contextRequest) return;
+          state.contextError = true;
+          hint(error?.message || t("error"));
+          renderSelects();
+        }
+      }
+
+      async function showHistory(channel, payload) {
+        const request = ++viewRequest;
+        try {
+          const result = await invoke(channel, payload);
+          if (request !== viewRequest) return;
+          state.snapshot = result.snapshot;
+          state.projects = result.projects || state.projects;
+          renderAll();
+        } catch (error) { hint(error?.message || t("error")); }
       }
 
       function fillSelect(node, groups) {
@@ -430,32 +580,140 @@
         if ([...node.options].some((item) => item.value === current)) node.value = current;
       }
 
+      function modelDisplayName(model) {
+        return (model.alias || model.label || model.key).replace(/\s*[（(].*[)）]\s*$/, "").trim();
+      }
+
       function renderSelects() {
-        const project = state.sessions.filter((item) => item.currentProject);
-        const other = state.sessions.filter((item) => !item.currentProject);
-        const sessionOptions = [];
-        if (!state.sessions.length) {
-          sessionOptions.push({ label: "", options: [{ value: "", label: t("noSession") }] });
-        } else {
-          if (project.length) sessionOptions.push({ label: t("thisProject"), options: project.map(sessionOption) });
-          if (other.length) sessionOptions.push({ label: project.length ? t("moreSessions") : "", options: other.map(sessionOption) });
-        }
-        fillSelect($("sessionSelect"), sessionOptions);
-        if (state.settings.sessionId) $("sessionSelect").value = state.settings.sessionId;
+        const context = state.context;
+        $("projectLabel").textContent = `${t("thisProject")}: ${context ? projectName(context.projectKey, context.projectName) : "—"}`;
+        $("projectLabel").title = context?.projectPath || "";
+        const browsing = Boolean(context) && !isCurrentHistory();
+        $("historyNote").hidden = !browsing;
+        $("historyNote").textContent = t("browsing");
+        $("returnBtn").hidden = !browsing;
 
         const modelOptions = state.models.length
-          ? [{ label: "", options: state.models.map((model) => ({ value: model.key, label: model.alias || model.label || model.key })) }]
+          ? [{ label: "", options: state.models.map((model) => ({ value: model.key, label: modelDisplayName(model) })) }]
           : [{ label: "", options: [{ value: "", label: t("noModel") }] }];
         fillSelect($("modelSelect"), modelOptions);
         if (state.settings.modelKey) $("modelSelect").value = state.settings.modelKey;
         $("thinkSelect").value = state.settings.thinkingLevel || "low";
         $("ctxBtn").classList.toggle("on", state.settings.includeSession === true);
-        $("sendBtn").disabled = state.pending || !state.models.length;
+        $("ctxBtn").setAttribute("aria-checked", String(state.settings.includeSession === true));
+        $("sendBtn").disabled = state.pending || !state.models.length || !isCurrentHistory() || state.contextError;
+        $("insertBtn").disabled = state.inserting || !isCurrentHistory() || !context?.sessionId || state.contextError;
+        $("insertBtn").setAttribute("aria-busy", String(state.inserting));
+        $("newBtn").disabled = !context || state.contextError;
+        $("input").disabled = browsing || !context || state.contextError;
+        renderModelPicker();
       }
 
-      function sessionOption(session) {
-        const title = session.title || session.id.slice(0, 8);
-        return { value: session.id, label: title };
+      const modelTextMeasure = document.createElement("canvas").getContext("2d");
+
+      function updateFooterLayout() {
+        const footer = document.querySelector(".composer-footer");
+        const style = getComputedStyle(footer);
+        const labelStyle = getComputedStyle($("modelValue")), triggerStyle = getComputedStyle($("modelMenuButton"));
+        const characters = Array.from($("modelValue").textContent);
+        modelTextMeasure.font = labelStyle.font;
+        const nameWidth = modelTextMeasure.measureText(characters.join("")).width
+          + Math.max(0, characters.length - 1) * (parseFloat(labelStyle.letterSpacing) || 0);
+        const minimum = Math.ceil(nameWidth + $("thinkingValue").getBoundingClientRect().width
+          + document.querySelector(".model-chevron").getBoundingClientRect().width
+          + 2 * (parseFloat(triggerStyle.columnGap) || 0)
+          + parseFloat(triggerStyle.paddingLeft) + parseFloat(triggerStyle.paddingRight));
+        footer.style.setProperty("--model-min-width", `${minimum}px`);
+        const gap = parseFloat(style.columnGap) || 0;
+        const available = footer.clientWidth - $("ctxBtn").offsetWidth - footer.querySelector(".composer-actions").offsetWidth - gap * 2;
+        footer.dataset.modelStacked = String(available < minimum);
+      }
+
+      let modelProvider = "";
+
+      function modelProviderId(model) {
+        return model.providerId || model.key.split("/")[0];
+      }
+
+      function setModelMenuOpen(open) {
+        $("modelMenu").hidden = !open;
+        $("modelMenuButton").setAttribute("aria-expanded", String(open));
+        if (open) {
+          renderModelPicker();
+          ($("modelOptions").querySelector('[aria-selected="true"]') || $("modelOptions").querySelector("button"))?.focus();
+        }
+      }
+
+      function renderModelPicker() {
+        const selected = state.models.find((model) => model.key === $("modelSelect").value);
+        const name = selected ? modelDisplayName(selected) : t("noModel");
+        $("modelValue").textContent = name;
+        $("thinkingValue").textContent = $("thinkSelect").value;
+        $("modelMenuButton").title = `${name} · ${t("thinking")}: ${$("thinkSelect").value}`;
+        $("modelMenuButton").disabled = !state.models.length;
+        $("modelMenu").setAttribute("aria-label", `${t("model")} / ${t("thinking")}`);
+        $("modelOptions").setAttribute("aria-label", t("model"));
+        const providers = new Map();
+        for (const model of state.models) {
+          const id = modelProviderId(model);
+          if (!providers.has(id)) providers.set(id, { name: model.providerName || id, count: 0 });
+          providers.get(id).count += 1;
+        }
+        if (modelProvider && !providers.has(modelProvider)) modelProvider = "";
+        $("modelProviders").replaceChildren();
+        for (const [id, provider] of [["", { name: t("allModels"), count: state.models.length }], ...providers]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "model-filter";
+          button.dataset.provider = id;
+          button.setAttribute("aria-pressed", String(id === modelProvider));
+          button.title = provider.name;
+          const label = document.createElement("span"); label.textContent = provider.name;
+          const count = document.createElement("span"); count.className = "model-count"; count.textContent = provider.count;
+          button.append(label, count);
+          button.addEventListener("click", () => { modelProvider = id; renderModelPicker(); });
+          $("modelProviders").appendChild(button);
+        }
+        $("modelOptions").replaceChildren();
+        for (const model of state.models.filter((item) => !modelProvider || modelProviderId(item) === modelProvider)) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "model-option";
+          button.dataset.modelKey = model.key;
+          button.setAttribute("role", "option");
+          button.setAttribute("aria-selected", String(model.key === $("modelSelect").value));
+          const label = document.createElement("span"); label.className = "model-name"; label.textContent = modelDisplayName(model);
+          const provider = document.createElement("span"); provider.className = "model-provider"; provider.textContent = model.providerName || modelProviderId(model);
+          const mark = document.createElement("span"); mark.textContent = model.key === $("modelSelect").value ? "✓" : ""; mark.setAttribute("aria-hidden", "true");
+          button.title = `${label.textContent} · ${provider.textContent}`;
+          button.append(label, provider, mark);
+          button.addEventListener("click", () => {
+            $("modelSelect").value = model.key;
+            $("modelSelect").dispatchEvent(new Event("change"));
+            renderModelPicker();
+            setModelMenuOpen(false);
+            $("modelMenuButton").focus();
+          });
+          $("modelOptions").appendChild(button);
+        }
+        $("thinkingOptions").replaceChildren();
+        for (const option of $("thinkSelect").options) {
+          const button = document.createElement("button");
+          button.type = "button"; button.className = "thinking-option"; button.dataset.level = option.value;
+          button.textContent = option.textContent; button.setAttribute("aria-pressed", String(option.value === $("thinkSelect").value));
+          button.addEventListener("click", () => {
+            $("thinkSelect").value = option.value;
+            $("thinkSelect").dispatchEvent(new Event("change"));
+            renderModelPicker();
+            $("thinkingOptions").querySelector(`[data-level="${option.value}"]`)?.focus();
+          });
+          $("thinkingOptions").appendChild(button);
+        }
+        updateFooterLayout();
+      }
+
+      function pendingHere() {
+        return state.pending && state.pendingProjectKey === state.snapshot.projectKey;
       }
 
       function renderMessages() {
@@ -463,7 +721,7 @@
         const conv = activeConv();
         const messages = conv.messages || [];
         log.replaceChildren();
-        if (!messages.length && !state.pending) {
+        if (!messages.length && !pendingHere()) {
           const empty = document.createElement("div");
           empty.className = "empty";
           const title = document.createElement("strong");
@@ -477,7 +735,7 @@
         for (const message of messages) {
           log.appendChild(renderMsg(message));
         }
-        if (state.pending) {
+        if (pendingHere()) {
           const pending = document.createElement("div");
           pending.className = "msg pending";
           pending.textContent = t("sending");
@@ -489,7 +747,12 @@
       function renderMsg(message) {
         const node = document.createElement("div");
         node.className = "msg" + (message.role === "user" ? " user" : "") + (message.error ? " error" : "");
-        node.textContent = message.error ? formatError(message.content) : message.content;
+        if (message.role === "assistant" && !message.error) {
+          const content = document.createElement("div");
+          content.className = "markdown";
+          content.appendChild(window.SideChatMarkdown.render(message.content));
+          node.appendChild(content);
+        } else node.textContent = message.error ? formatError(message.content) : message.content;
         if (message.role === "assistant" && !message.error) {
           const actions = document.createElement("div");
           actions.className = "msg-actions";
@@ -505,12 +768,22 @@
 
       function formatError(content) {
         if (content === "RATE_LIMITED") return t("rateLimited");
+        if (String(content).includes("Session changed") || content === "STALE_CONTEXT") return t("sessionChanged");
+        if (String(content).includes("Draft bridge") || String(content).includes("no composer")) return t("draftUnavailable");
+        if (String(content).includes("main draft changed")) return t("draftStale");
+        if (String(content).includes("32 KiB")) return t("draftTooLarge");
         return content || t("error");
       }
 
       function renderConvs() {
         const list = $("convList");
         list.replaceChildren();
+        fillSelect($("historySelect"), [{ label: "", options: state.projects.map((project) => ({
+          value: project.key,
+          label: projectName(project.key, project.name) + (project.key === state.context?.projectKey ? ` (${t("thisProject")})` : "")
+        })) }]);
+        $("historySelect").value = state.snapshot.projectKey || "";
+        const projectKey = state.snapshot.projectKey;
         for (const conv of state.snapshot.conversations) {
           const row = document.createElement("div");
           row.className = "conv" + (conv.id === state.snapshot.activeId ? " active" : "");
@@ -520,20 +793,17 @@
           meta.textContent = (conv.messages || []).length ? String((conv.messages || []).length) : "";
           row.append(title, meta);
           row.addEventListener("click", async () => {
-            const result = await invoke("chat.select", { id: conv.id });
-            state.snapshot = result.snapshot;
+            await showHistory("chat.select", { id: conv.id, projectKey });
             $("drawer").classList.remove("open");
-            renderAll();
           });
           const del = document.createElement("button");
           del.type = "button";
           del.className = "ghost";
           del.textContent = t("deleteChat");
+          del.disabled = !isCurrentHistory();
           del.addEventListener("click", async (event) => {
             event.stopPropagation();
-            const result = await invoke("chat.delete", { id: conv.id });
-            state.snapshot = result.snapshot;
-            renderAll();
+            await showHistory("chat.delete", { id: conv.id, projectKey });
           });
           row.appendChild(del);
           list.appendChild(row);
@@ -576,37 +846,47 @@
           }
           return result;
         }
-        return { status: "error", error: t("error"), snapshot: state.snapshot };
+        return { status: "error", error: t("error") };
       }
 
       $("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const text = $("input").value.trim();
-        if (!text || state.pending) return;
+        if (!text || state.pending || !isCurrentHistory() || state.contextError) return;
+        const target = scope();
+        const modelKey = $("modelSelect").value;
+        const thinkingLevel = $("thinkSelect").value;
         state.pending = true;
-        $("input").value = "";
+        state.pendingProjectKey = target.projectKey;
         renderAll();
         try {
+          await refreshContext();
+          if (state.contextError || target.sessionId !== scope().sessionId || target.projectKey !== scope().projectKey) {
+            hint(t("sessionChanged"));
+            return;
+          }
           const result = await invoke("chat.send", {
-            text,
-            includeSession: state.settings.includeSession,
-            sessionId: $("sessionSelect").value,
-            modelKey: $("modelSelect").value,
-            thinkingLevel: $("thinkSelect").value
+            text, ...target, modelKey, thinkingLevel,
+            includeSession: state.settings.includeSession
           });
-          state.snapshot = result.snapshot;
+          $("input").value = "";
+          if (state.snapshot.projectKey === result.snapshot.projectKey) state.snapshot = result.snapshot;
           state.settings = result.settings || state.settings;
           state.jobId = result.jobId;
           renderAll();
           const done = await waitJob(result.jobId);
-          state.snapshot = done.snapshot || state.snapshot;
-          if (done.status === "error") hint(formatError(done.error || done.code));
-          else hint("");
+          if (done.snapshot?.projectKey === state.snapshot.projectKey) {
+            state.snapshot = done.snapshot;
+            if (done.status === "error") hint(formatError(done.error || done.code));
+            else hint("");
+          }
         } catch (error) {
-          hint(error?.message || t("error"));
+          hint(formatError(error?.message || error?.code));
+          await refreshContext();
         } finally {
           state.pending = false;
           state.jobId = "";
+          state.pendingProjectKey = "";
           renderAll();
           $("input").focus();
         }
@@ -620,12 +900,18 @@
       });
 
       $("newBtn").addEventListener("click", async () => {
-        const result = await invoke("chat.new");
-        state.snapshot = result.snapshot;
-        renderAll();
+        await refreshContext();
+        if (!state.context || state.contextError) return;
+        await showHistory("chat.new", scope());
         $("input").focus();
       });
-      $("listBtn").addEventListener("click", () => $("drawer").classList.add("open"));
+      $("listBtn").addEventListener("click", async () => {
+        await refreshContext();
+        renderConvs();
+        $("drawer").classList.add("open");
+      });
+      $("historySelect").addEventListener("change", () => showHistory("chat.history", { projectKey: $("historySelect").value }));
+      $("returnBtn").addEventListener("click", () => showHistory("chat.history", { projectKey: state.context.projectKey }));
       $("closeList").addEventListener("click", () => $("drawer").classList.remove("open"));
       $("drawer").addEventListener("click", (event) => {
         if (event.target === $("drawer")) $("drawer").classList.remove("open");
@@ -634,23 +920,52 @@
         await saveSettings({ includeSession: !state.settings.includeSession });
         renderAll();
       });
-      $("sessionSelect").addEventListener("change", () => saveSettings({ sessionId: $("sessionSelect").value }));
+      $("modelMenuButton").addEventListener("click", () => setModelMenuOpen($("modelMenu").hidden));
+      document.addEventListener("pointerdown", (event) => {
+        if (!$("modelControl").contains(event.target)) setModelMenuOpen(false);
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !$("modelMenu").hidden) {
+          event.preventDefault(); setModelMenuOpen(false); $("modelMenuButton").focus();
+        }
+      });
+      $("modelOptions").addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        const options = [...$("modelOptions").querySelectorAll("button")];
+        if (!options.length) return;
+        event.preventDefault();
+        const next = options.indexOf(document.activeElement) + (event.key === "ArrowDown" ? 1 : -1);
+        options[(next + options.length) % options.length].focus();
+      });
       $("modelSelect").addEventListener("change", () => saveSettings({ modelKey: $("modelSelect").value }));
       $("thinkSelect").addEventListener("change", () => saveSettings({ thinkingLevel: $("thinkSelect").value }));
       $("insertBtn").addEventListener("click", async () => {
         const last = [...(activeConv().messages || [])].reverse().find((item) => item.role === "assistant" && !item.error);
-        if (!last) return;
-        if (!$("sessionSelect").value) {
-          hint(t("insertNeed"));
-          return;
-        }
+        if (!last || !isCurrentHistory() || state.inserting) return;
+        const target = scope();
+        if (!target.sessionId) { hint(t("insertNeed")); return; }
+        state.inserting = true;
+        renderSelects();
         try {
-          await invoke("chat.insert", { sessionId: $("sessionSelect").value, text: last.content });
+          await invoke("chat.insert", { ...target, text: last.content });
           hint(t("insertOk"), true);
         } catch (error) {
           const message = String(error?.message || "");
-          hint(message.toLowerCase().includes("busy") ? t("insertBusy") : (message || t("error")));
+          hint(message.toLowerCase().includes("busy") ? t("insertBusy") : formatError(message || error?.code));
+        } finally {
+          state.inserting = false;
+          renderSelects();
         }
+      });
+
+      $("log").addEventListener("click", async (event) => {
+        const link = event.target.closest("a");
+        if (!link) return;
+        event.preventDefault();
+        const href = link.getAttribute("href") || "";
+        if (!/^(https?:\/\/|mailto:)/i.test(href)) return;
+        try { await invoke("shell.openExternal", { url: href }); }
+        catch (error) { hint(error?.message || t("error")); }
       });
 
       async function boot() {
@@ -659,7 +974,8 @@
           state.snapshot = data.snapshot;
           state.settings = data.settings;
           state.models = data.models || [];
-          state.sessions = data.sessions || [];
+          state.context = data.context;
+          state.projects = data.projects || [];
           state.locale = localeOf(data.locale);
         } catch (error) {
           hint(error?.message || t("error"));
@@ -674,8 +990,25 @@
         });
         window.__appearance.init(window.pluginBridge);
       }
-      boot();
+      const unsubscribers = [];
+      for (const event of ["session:activated", "workspace:changed"]) {
+        const unsubscribe = window.pluginBridge?.on?.(event, () => { void refreshContext(); });
+        if (typeof unsubscribe === "function") unsubscribers.push(unsubscribe);
+      }
+      const recoverContext = () => { if (!document.hidden) void refreshContext(); };
+      document.addEventListener("visibilitychange", recoverContext);
+      window.addEventListener("focus", recoverContext);
+      // Detached panels do not receive session:activated; pulls also repair missed pushes.
+      window.addEventListener("resize", updateFooterLayout);
+      const contextTimer = setInterval(recoverContext, 2000);
+      window.addEventListener("pagehide", () => {
+        clearInterval(contextTimer);
+        for (const unsubscribe of unsubscribers) unsubscribe();
+        document.removeEventListener("visibilitychange", recoverContext);
+        window.removeEventListener("focus", recoverContext);
+        window.removeEventListener("resize", updateFooterLayout);
+      }, { once: true });
+      boot().then(refreshContext);
     </script>
   </body>
-  </html>
 </html>
