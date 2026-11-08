@@ -193,6 +193,7 @@
       .markdown table { border-collapse: collapse; font-size: 0.95em; }
       .markdown th, .markdown td { border: 1px solid var(--line); padding: 5px 8px; }
       .markdown hr { border: 0; border-top: 1px solid var(--line); }
+      .markdown .math-display { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; margin: 0.6em 0; }
       .msg.user {
         align-self: flex-end;
         max-width: 92%;
@@ -375,6 +376,8 @@
     </div>
     <script src="./vendor/marked.umd.js"></script>
     <script src="./vendor/purify.min.js"></script>
+    <script src="./vendor/marked-cjk-friendly.js"></script>
+    <script src="./vendor/katex.min.js"></script>
     <script src="./markdown.js"></script>
     <script src="./appearance.js"></script>
     <script>
