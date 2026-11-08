@@ -9,7 +9,7 @@ const fixtureMarkdown = [
 window.installSideChatMock = function (win) {
   const copy = (value) => JSON.parse(JSON.stringify(value));
   let projectKey = "project:a", sessionId = "session-a-0001", base = "light";
-  const names = { "project:a": "泥石流模拟 A", "project:b": "边界校验 B", legacy: "Legacy history" };
+  const names = { general: "No project", "project:a": "泥石流模拟 A", "project:b": "边界校验 B", legacy: "Legacy history" };
   const snapshots = {};
   for (const key of Object.keys(names)) {
     const id = `chat-${key}`;
@@ -19,10 +19,14 @@ window.installSideChatMock = function (win) {
         : [{ role: "user", content: key === "legacy" ? "旧版原始记录" : "B 项目专有消息" }],
     }] };
   }
+  snapshots.general = { version: 1, projectKey: "general", projectName: "No project", activeId: "standalone-2", conversations: [
+    { id: "standalone-2", title: "独立记录二", messages: [{ role: "user", content: "非项目历史二" }] },
+    { id: "standalone-1", title: "独立记录一", messages: [{ role: "user", content: "非项目历史一" }] },
+  ] };
   let settings = { modelKey: "mock/model", thinkingLevel: "high", includeSession: true };
   const listeners = new Map(), calls = [], jobs = new Map();
   const rendererCalls = [];
-  const context = () => ({ projectKey, sessionId, projectName: names[projectKey], projectPath: `D:/projects/${projectKey}` });
+  const context = () => ({ projectKey, sessionId, projectName: names[projectKey], projectPath: projectKey === "general" ? "" : `D:/projects/${projectKey}` });
   const projects = () => Object.entries(names).map(([key, name]) => ({ key, name }));
   const current = () => ({ context: context(), snapshot: copy(snapshots[projectKey]), projects: projects() });
   function emit(event, data) { for (const fn of listeners.get(event) || []) fn(data); }
@@ -393,6 +397,44 @@ window.installSideChatMock = function (win) {
         await waitFor(() => win.__mock.calls.some(c => c.channel === "chat.send" && c.payload.thinkingLevel === level && c.payload.modelKey === "other/model"), `send payload mismatch: ${level}`);
         await waitFor(() => !$("sendBtn").disabled, `send not settled: ${level}`);
       }
+    });
+    await check("独立会话入口唯一，汇总全部非项目记录，项目选项展示不变", async () => {
+      const options = () => [...$("historySelect").options];
+      assert(options().filter(option => option.value === "general").length === 1, "standalone entry missing/duplicated");
+      assert(options().find(option => option.value === "general").textContent === "独立会话", "standalone entry still shown as no project");
+      assert(options().find(option => option.value === "project:a").textContent === "泥石流模拟 A (当前项目)", "current project label changed");
+      assert(options().find(option => option.value === "project:b").textContent === "边界校验 B", "other project label changed");
+      $("historySelect").value = "general"; $("historySelect").dispatchEvent(new win.Event("change"));
+      await waitFor(() => doc.querySelectorAll(".conv").length === 2 && $("historySelect").value === "general", "standalone history not shown");
+      assert($("sendBtn").disabled && $("insertBtn").disabled, "browsing standalone history enabled cross-context writes");
+      for (const [title, text] of [["独立记录一", "非项目历史一"], ["独立记录二", "非项目历史二"]]) {
+        [...doc.querySelectorAll(".conv")].find(row => row.querySelector("div").textContent === title).click();
+        await waitFor(() => $("log").textContent.includes(text), `standalone record inaccessible: ${title}`);
+      }
+      $("returnBtn").click(); await waitFor(() => $("historySelect").value === "project:a" && !$("sendBtn").disabled, "project context not restored");
+      assert($("log").textContent.includes("项目进度") && !$("log").textContent.includes("非项目历史"), "standalone history leaked into project A");
+    });
+    await check("多个非项目会话共用独立入口，切回项目后历史仍隔离", async () => {
+      win.__mock.change("general", "standalone-host-1");
+      await waitFor(() => win.scope().sessionId === "standalone-host-1" && $("historySelect").value === "general", "standalone context not followed");
+      assert($("projectLabel").textContent === "独立会话", "standalone header still looks like a project");
+      assert([...$("historySelect").options].find(option => option.value === "general").textContent === "独立会话", "standalone entry marked as current project");
+      assert(!$("sendBtn").disabled && doc.querySelectorAll(".conv").length === 2, "standalone history unavailable");
+      win.__mock.change("general", "standalone-host-2");
+      await waitFor(() => win.scope().sessionId === "standalone-host-2", "second standalone session not followed");
+      assert(doc.querySelectorAll(".conv").length === 2 && $("log").textContent.includes("非项目历史二"), "standalone history split by session id");
+      win.__mock.change("project:b", "session-b-0002");
+      await waitFor(() => $("log").textContent.includes("B 项目专有消息"), "project B history not restored");
+      assert(!$("log").textContent.includes("非项目历史"), "standalone history leaked into project B");
+      win.__mock.change("project:a", "session-a-0003"); await waitFor(() => $("historySelect").value === "project:a", "project A not restored");
+    });
+    await check("从独立会话浏览项目历史只读，返回入口指向独立会话", async () => {
+      win.__mock.change("general", "standalone-host-2"); await waitFor(() => $("historySelect").value === "general", "standalone not ready");
+      $("historySelect").value = "project:a"; $("historySelect").dispatchEvent(new win.Event("change"));
+      await waitFor(() => $("log").textContent.includes("项目进度") && !$("returnBtn").hidden, "project history not shown");
+      assert($("sendBtn").disabled && $("returnBtn").textContent === "返回独立会话", "standalone return/read-only state incorrect");
+      $("returnBtn").click(); await waitFor(() => $("historySelect").value === "general" && !$("sendBtn").disabled, "return did not restore standalone");
+      win.__mock.change("project:a", "session-a-0003"); await waitFor(() => $("historySelect").value === "project:a", "project context not restored");
     });
     $("log").scrollTop = 0;
     window.__testResult = { passed: results.length, failed: 0, results };

@@ -163,7 +163,8 @@ async function currentContext() {
     const workspace = await pi.workspace.get();
     const checked = await pi.session.getActive();
     if (selected?.sessionId !== checked?.sessionId || selected?.projectPath !== checked?.projectPath) continue;
-    const projectPath = String(selected?.projectPath || workspace?.path || "");
+    // A selected session without a project must not borrow another open workspace.
+    const projectPath = String(selected ? selected.projectPath || "" : workspace?.path || "");
     const roots = [workspace?.path, ...(workspace?.roots || []).map((root) => root.path)];
     const inWorkspace = roots.some((root) => root && normalizedPath(root) === normalizedPath(projectPath));
     const projectKey = inWorkspace && workspace?.projectId
@@ -463,6 +464,8 @@ async function onLoad() {
   dataFile = path.join(dataPath, "conversations.json");
   historyReady = false;
   projects.clear();
+  // A permanent entry; loading an existing general bucket restores its history in place.
+  projects.set("general", { name: "Standalone sessions", store: createStore() });
   await loadStore();
   historyReady = true;
   await pi.commands.register({

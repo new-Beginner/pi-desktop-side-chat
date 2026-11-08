@@ -8,7 +8,7 @@ PI-Desktop plugin: a chat docked in the right work panel.
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.7 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
+Version 0.1.8 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
 
 ## Install
 
@@ -41,6 +41,7 @@ Version 0.1.3 adds the high-risk `renderer.extension` grant for draft-only retur
 - The icon-only context switch keeps its saved setting. The return icon sits immediately beside Send and inserts the latest successful assistant reply at the main input's caret without auto-send. Draft generation changes, session switches, timeouts and unload cancel stale writes. A single insert is limited by the host to 32 KiB UTF-8; oversized replies are refused, not truncated.
 - The model picker stays on the bottom action row and shares the buttons' 24px height with vertically centered text. As space decreases, hide the chevron first, then the reasoning badge, and only then shrink the model name. Restore these in reverse order as space returns. Hiding the reasoning badge does not change the selected effort or the menu choices. Oversized names retain an ellipsis and full-name tooltip. Other spacing and picker/send behavior are unchanged.
 - Histories are stored separately by host project id (or normalized project path on hosts without that metadata). Switch projects to restore the appropriate history, or use the drawer's project filter to browse other projects read-only.
+- The permanent **Standalone sessions** entry contains all saved non-project side-chat history, including records previously shown as No project. Its existing `general` storage key is retained. A selected session without a project stays standalone even if another workspace is open; project histories and unassigned legacy records are not merged into it.
 - Old unscoped history is backed up as `conversations.v1.json` and remains accessible under “Legacy history (unassigned)”. New history uses a project-scoped v2 file; existing 40-conversation / 80-message limits now apply per project.
 
 Regression checks: `node --test tests/side-chat.test.cjs tests/draft-bridge.test.mjs`; preview `tests/ui.html` for browser checks with a simulated main input and no real model calls. These checks do not replace a reload and permission review in the actual app.

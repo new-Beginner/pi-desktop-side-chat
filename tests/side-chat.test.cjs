@@ -262,3 +262,80 @@ test("all reasoning levels persist; xhigh/max reach completion unchanged and off
   const invalid = await h.api.onPanelInvoke("chat.setSettings", { thinkingLevel: "unknown" });
   assert.equal(invalid.settings.thinkingLevel, "low");
 });
+
+test("standalone history has one permanent entry while a project is active", async () => {
+  const h = host(); const data = await boot(h);
+  assert.equal(data.projects.filter(project => project.key === "general").length, 1);
+  assert.equal(data.projects[0].key, "general");
+  const standalone = await h.api.onPanelInvoke("chat.history", { projectKey: "general" });
+  assert.equal(standalone.snapshot.projectKey, "general");
+  assert.equal(standalone.snapshot.conversations[0].messages.length, 0);
+  assert.equal((await h.api.onPanelInvoke("chat.context")).context.projectKey, data.context.projectKey);
+});
+
+test("all non-project sessions share general history without borrowing an open workspace", async () => {
+  const h = host(); const project = await boot(h);
+  h.switchTo("standalone-1", null); h.setWorkspace({ path: "D:/projects/A", name: "A", projectId: "project-a" });
+  const first = await h.api.onPanelInvoke("chat.context");
+  assert.equal(first.context.projectKey, "general");
+  assert.equal(first.context.projectPath, "");
+  const a = await send(h, "first standalone history"); await settle(h, a.jobId);
+  await h.api.onPanelInvoke("chat.new", { sessionId: "standalone-1", projectKey: "general" });
+  h.switchTo("standalone-2", null); h.setWorkspace({ path: "D:/projects/B", name: "B", projectId: "project-b" });
+  const b = await send(h, "second standalone history"); await settle(h, b.jobId);
+  const history = await h.api.onPanelInvoke("chat.history", { projectKey: "general" });
+  assert.equal(history.snapshot.conversations.length, 2);
+  assert.ok(JSON.stringify(history.snapshot).includes("first standalone history"));
+  assert.ok(JSON.stringify(history.snapshot).includes("second standalone history"));
+  assert.equal(history.projects.filter(item => item.key === "general").length, 1);
+  assert.ok(!history.projects.some(item => item.key === "project:project-b"));
+  const untouched = await h.api.onPanelInvoke("chat.history", { projectKey: project.context.projectKey });
+  assert.deepEqual(JSON.parse(JSON.stringify(untouched.snapshot)), JSON.parse(JSON.stringify(project.snapshot)));
+});
+
+test("existing general records survive reload intact while project and legacy buckets stay unchanged", async () => {
+  const state = (id, text) => ({ version: 1, activeId: id, conversations: [{ id, title: text, createdAt: "2026-01-01", updatedAt: "2026-01-01", messages: [{ id: `m-${id}`, role: "user", content: text, createdAt: "2026-01-01", error: false }] }] });
+  const general = state("solo-2", "saved standalone two");
+  general.conversations.push(...state("solo-1", "saved standalone one").conversations);
+  const initial = { version: 2, projects: [
+    { key: "project:project-a", name: "A", state: state("a", "project A only") },
+    { key: "general", name: "无项目", state: general },
+    { key: "project:project-b", name: "B", state: state("b", "project B only") },
+    { key: "legacy", name: "Legacy history", state: state("legacy", "unclassified legacy only") },
+  ] };
+  const h = host(initial); await boot(h);
+  const loaded = await h.api.onPanelInvoke("chat.history", { projectKey: "general" });
+  assert.deepEqual(JSON.parse(JSON.stringify(loaded.snapshot.conversations)), general.conversations);
+  assert.equal(loaded.snapshot.activeId, general.activeId);
+  assert.ok(!JSON.stringify(loaded.snapshot).includes("project A only"));
+  assert.ok(!JSON.stringify(loaded.snapshot).includes("unclassified legacy only"));
+  await h.api.onUnload();
+  const saved = JSON.parse(h.files.get("/private/conversations.json"));
+  assert.equal(saved.version, 2);
+  assert.equal(saved.projects.filter(item => item.key === "general").length, 1);
+  assert.deepEqual(saved.projects.find(item => item.key === "general").state, general);
+  assert.deepEqual(saved.projects.filter(item => item.key !== "general"), initial.projects.filter(item => item.key !== "general"));
+  const restored = host(saved); await boot(restored);
+  const again = await restored.api.onPanelInvoke("chat.history", { projectKey: "general" });
+  assert.deepEqual(JSON.parse(JSON.stringify(again.snapshot.conversations)), general.conversations);
+});
+
+test("a late standalone reply stays out of project history after switching", async () => {
+  const h = host(); h.switchTo("standalone-1", null); await boot(h); h.delay();
+  const job = await send(h, "slow standalone question");
+  for (let i = 0; i < 20 && !h.completions.length; i++) await new Promise(setImmediate);
+  h.switchTo("a1", "D:/projects/A", "project-a"); await h.api.onPanelInvoke("chat.context"); h.finish();
+  const done = await settle(h, job.jobId);
+  assert.equal(done.snapshot.projectKey, "general");
+  assert.ok(JSON.stringify(done.snapshot).includes("slow standalone question"));
+  const project = await h.api.onPanelInvoke("chat.context");
+  assert.equal(project.context.projectKey, "project:project-a");
+  assert.equal(project.snapshot.conversations[0].messages.length, 0);
+});
+
+test("sharing standalone history does not authorize stale sends or draft returns", async () => {
+  const h = host(); h.switchTo("standalone-1", null); const first = await boot(h);
+  h.switchTo("standalone-2", null);
+  for (const channel of ["chat.send", "chat.insert"]) await assert.rejects(h.api.onPanelInvoke(channel, { text: "stale", projectKey: first.context.projectKey, sessionId: first.context.sessionId }), { code: "STALE_CONTEXT" });
+  assert.equal(h.completions.length, 0);
+});

@@ -411,7 +411,9 @@
           allModels: "All models",
           historyProject: "Project history",
           legacy: "Legacy history (unassigned)",
-          general: "No project",
+          general: "Standalone sessions",
+          returnStandalone: "Return to standalone sessions",
+          browsingGeneral: "Viewing other history (read-only). Return to the current session before sending.",
           returnCurrent: "Return to current project",
           browsing: "Viewing another project's history (read-only).",
           sessionChanged: "The current session changed. Please send again.",
@@ -449,7 +451,9 @@
           allModels: "全部模型",
           historyProject: "项目历史",
           legacy: "旧版历史（未归类）",
-          general: "无项目",
+          general: "独立会话",
+          returnStandalone: "返回独立会话",
+          browsingGeneral: "正在浏览其他会话历史（只读），发送前请返回当前会话。",
           returnCurrent: "返回当前项目",
           browsing: "正在浏览其他项目历史（只读），发送前请返回当前项目。",
           sessionChanged: "当前会话已变化，请重新发送。",
@@ -584,12 +588,14 @@
 
       function renderSelects() {
         const context = state.context;
-        $("projectLabel").textContent = `${t("thisProject")}: ${context ? projectName(context.projectKey, context.projectName) : "—"}`;
+        const standalone = context?.projectKey === "general";
+        $("projectLabel").textContent = standalone ? t("general") : `${t("thisProject")}: ${context ? projectName(context.projectKey, context.projectName) : "—"}`;
         $("projectLabel").title = context?.projectPath || "";
         const browsing = Boolean(context) && !isCurrentHistory();
         $("historyNote").hidden = !browsing;
-        $("historyNote").textContent = t("browsing");
+        $("historyNote").textContent = t(standalone || state.snapshot.projectKey === "general" ? "browsingGeneral" : "browsing");
         $("returnBtn").hidden = !browsing;
+        $("returnBtn").textContent = t(standalone ? "returnStandalone" : "returnCurrent");
 
         const modelOptions = state.models.length
           ? [{ label: "", options: state.models.map((model) => ({ value: model.key, label: modelDisplayName(model) })) }]
@@ -786,7 +792,7 @@
         list.replaceChildren();
         fillSelect($("historySelect"), [{ label: "", options: state.projects.map((project) => ({
           value: project.key,
-          label: projectName(project.key, project.name) + (project.key === state.context?.projectKey ? ` (${t("thisProject")})` : "")
+          label: projectName(project.key, project.name) + (project.key !== "general" && project.key === state.context?.projectKey ? ` (${t("thisProject")})` : "")
         })) }]);
         $("historySelect").value = state.snapshot.projectKey || "";
         const projectKey = state.snapshot.projectKey;

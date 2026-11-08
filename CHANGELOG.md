@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8
+
+- Add a permanent Standalone sessions history entry for all non-project chats, reusing the existing general bucket without splitting or discarding saved records.
+- Respect a selected session's null project path instead of borrowing an unrelated workspace; leave project IDs/path grouping and unassigned legacy history unchanged.
+
 ## 0.1.7
 
 - On shrinking widths, hide the footer chevron first, the reasoning badge second, and truncate the model name only after both are hidden. Restore them in reverse order as space returns.
