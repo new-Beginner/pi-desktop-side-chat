@@ -10,33 +10,33 @@
     <style>
       :root {
         color-scheme: light;
-        --bg: #f5faff;
-        --card: #ffffff;
-        --ink: #183b5b;
-        --muted: #617d96;
-        --line: #dbe8f2;
-        --accent: #2776b5;
-        --accent-ink: #ffffff;
-        --user: #e2f0fc;
-        --user-ink: #183b5b;
-        --danger: #b42318;
-        --ok: #23755a;
+        --bg: var(--ds-bg-dock, var(--ds-bg-primary, #f5faff));
+        --card: var(--ds-bg-elevated-opaque, var(--ds-bg-secondary, #ffffff));
+        --ink: var(--ds-text-primary, #183b5b);
+        --muted: var(--ds-text-secondary, #617d96);
+        --line: var(--ds-border-default, #dbe8f2);
+        --accent: var(--ds-accent, #2776b5);
+        --accent-ink: var(--ds-bg-primary, #ffffff);
+        --user: var(--ds-bg-active, #e2f0fc);
+        --user-ink: var(--ds-text-primary, #183b5b);
+        --danger: var(--ds-error, #b42318);
+        --ok: var(--ds-success, #23755a);
         --shadow: none;
         --titlebar: var(--pi-plugin-titlebar-height, 0px);
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
-        --bg: #152332;
-        --card: #1b2c3d;
-        --ink: #e2edf7;
-        --muted: #9bb2c7;
-        --line: #32485c;
-        --accent: #80bcf0;
-        --accent-ink: #102335;
-        --user: #244663;
-        --user-ink: #e2edf7;
-        --danger: #ff9a91;
-        --ok: #87cbb2;
+        --bg: var(--ds-bg-dock, var(--ds-bg-primary, #152332));
+        --card: var(--ds-bg-elevated-opaque, var(--ds-bg-secondary, #1b2c3d));
+        --ink: var(--ds-text-primary, #e2edf7);
+        --muted: var(--ds-text-secondary, #9bb2c7);
+        --line: var(--ds-border-default, #32485c);
+        --accent: var(--ds-accent, #80bcf0);
+        --accent-ink: var(--ds-bg-primary, #102335);
+        --user: var(--ds-bg-active, #244663);
+        --user-ink: var(--ds-text-primary, #e2edf7);
+        --danger: var(--ds-error, #ff9a91);
+        --ok: var(--ds-success, #87cbb2);
         --shadow: none;
       }
       * { box-sizing: border-box; }
@@ -274,6 +274,7 @@
         background: transparent;
         padding: 4px;
       }
+      textarea::placeholder { color: var(--ds-placeholder-ink, var(--ds-text-secondary, revert)); }
       .send {
         border: 0;
         border-radius: 9px;
@@ -327,7 +328,7 @@
         <button class="icon-btn" id="listBtn" type="button" data-i18n-title="chats">≡</button>
       </div>
     </header>
-    <div class="project-label" id="projectLabel" style="padding:8px 12px 0"></div>
+    <div class="project-label" id="projectLabel" style="padding:4px 12px;background:var(--bg)"></div>
     <div class="history-note" id="historyNote" style="padding:0 12px" hidden></div>
     <button class="ghost" id="returnBtn" type="button" data-i18n="returnCurrent" hidden></button>
     <div class="log" id="log"></div>

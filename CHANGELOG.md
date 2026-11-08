@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9
+
+- Map the plugin palette to host --ds-* tokens with the existing light/dark defaults as fallbacks.
+- Follow live theme CSS updates even when the new stylesheet has the same length.
+- Verify Qingye light green and Sax Dark floating-shadow palettes without changing chat, history, model settings or host source.
+
 ## 0.1.8
 
 - Add a permanent Standalone sessions history entry for all non-project chats, reusing the existing general bucket without splitting or discarding saved records.

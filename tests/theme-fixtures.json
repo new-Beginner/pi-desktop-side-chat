@@ -1,0 +1,18 @@
+[
+  {
+    "id": "pi.theme.studio:custom-3",
+    "label": "青叶 · 浅绿",
+    "base": "light",
+    "provenance": "Colour-token snapshot from installed theme; no images, fonts or layout rules.",
+    "sourceSha256": "be03c5bddc777bc0850bfe54c2b25d9cd5b7a5ebc52a4f2f5d0388a0b33b18a9",
+    "css": ":root[data-theme=\"light\"] {\n  --ds-bg-primary: #eaf5ea;\n  --ds-bg-secondary: #e4f0e3;\n  --ds-bg-dock: #e4f0e3;\n  --ds-bg-elevated-opaque: #f0f8ed;\n  --ds-text-primary: #273b2d;\n  --ds-text-secondary: #405545;\n  --ds-border-default: #adc6ab;\n  --ds-accent: #356c45;\n  --ds-bg-active: #cde4cd;\n  --ds-error: #a03f39;\n  --ds-success: #2e6841;\n  --ds-placeholder-ink: #506252;\n}\n"
+  },
+  {
+    "id": "adoin.sax-design-theme:sax-dark",
+    "label": "Sax Dark · 浮影",
+    "base": "dark",
+    "provenance": "Colour-token snapshot from installed theme; no images, fonts or layout rules.",
+    "sourceSha256": "ed3b89b309ee9ace9b87b96ba6c84b60040924bb60eb3c7f37ed9ea8fee331fa",
+    "css": ":root[data-theme=\"dark\"] {\n  --ds-bg-primary: var(--sax-surface);\n  --sax-surface: hsl(245 32% 13%);\n  --ds-bg-secondary: var(--sax-canvas);\n  --sax-canvas: hsl(245 48% 10%);\n  --ds-bg-dock: var(--sax-glass);\n  --sax-glass: hsl(245 42% 16% / 0.7);\n  --ds-bg-elevated-opaque: var(--sax-raised);\n  --sax-raised: hsl(245 38% 18%);\n  --ds-text-primary: var(--sax-ink);\n  --sax-ink: hsl(245 32% 96%);\n  --ds-text-secondary: var(--sax-secondary);\n  --sax-secondary: hsl(245 24% 82%);\n  --ds-border-default: hsl(220 0% 0% / 0);\n  --ds-accent: var(--sax-action);\n  --sax-action: var(--sax-primary-fill);\n  --sax-primary-fill: hsl(var(--sax-primary-h) var(--sax-fill-s) var(--sax-fill-l));\n  --sax-primary-h: 252;\n  --sax-fill-s: 92%;\n  --sax-fill-l: 74%;\n  --ds-bg-active: hsl(var(--sax-primary-h) 90% 60% / .16);\n  --ds-error: var(--sax-error);\n  --sax-error: hsl(var(--sax-error-h) var(--sax-base-s) var(--sax-base-l));\n  --sax-error-h: 4;\n  --sax-base-s: 88%;\n  --sax-base-l: 76%;\n  --ds-success: var(--sax-success);\n  --sax-success: hsl(var(--sax-success-h) var(--sax-base-s) var(--sax-base-l));\n  --sax-success-h: 150;\n  --ds-placeholder-ink: var(--sax-muted);\n  --sax-muted: hsl(245 18% 70%);\n}\n"
+  }
+]

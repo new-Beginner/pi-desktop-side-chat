@@ -86,7 +86,7 @@
       explicitBase(entry) || entry.base,
       entry.theme,
       entry.locale,
-      css ? String(css).length : 0,
+      css ? String(css) : "",
       entry.pluginTheme && entry.pluginTheme.id,
     ].join("|");
   }

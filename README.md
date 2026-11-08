@@ -8,7 +8,9 @@ PI-Desktop plugin: a chat docked in the right work panel.
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.8 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
+Version 0.1.9 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
+
+0.1.9 maps the sidebar palette to host `--ds-*` tokens, preserves default colours and applies live theme CSS updates. Chat/history/model behavior is unchanged. Theme regression: `node tests/theme-follow.cjs`.
 
 ## Install
 

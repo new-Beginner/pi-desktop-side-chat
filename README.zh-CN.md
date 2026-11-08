@@ -8,7 +8,9 @@ PI-Desktop 插件：停靠在右侧工作面板的独立聊天。
 - 可选：将最新有效回复放回主输入框（仅插入草稿，不自动发送）
 - AI 回复以安全 Markdown 渲染；本地打包 marked / DOMPurify，不使用 CDN
 
-0.1.8 面向 PI-Desktop 0.21.1 系列（含预发布构建），使用官方 `session.getActive` 和 Renderer 草稿接口。
+0.1.9 面向 PI-Desktop 0.21.1 系列（含预发布构建），使用官方 `session.getActive` 和 Renderer 草稿接口。
+
+0.1.9 将侧栏配色映射到宿主 `--ds-*`，保留默认色并实时跟随主题。不改聊天、历史及模型配置。主题回归：`node tests/theme-follow.cjs`；记录见 `docs/theme-follow-0.1.9.md`。
 
 ## 安装
 

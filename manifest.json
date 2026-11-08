@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.vastsa.side-chat",
   "name": "Side Chat",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
   "i18n": {
     "en": {
@@ -25,7 +25,7 @@
   "rendererActions": ["plugin.call", "composer.readDraft", "composer.insertText"],
   "rendererCallMethods": ["takeDraft", "finishDraft"],
   "categories": ["productivity"],
-  "changelog": "Release 0.1.8: provide one permanent Standalone sessions history entry for all non-project chats, reuse existing general history, and preserve project history grouping.",
+  "changelog": "Release 0.1.9: follow host --ds-* theme colours and live updates, preserve light/dark fallbacks, and leave chat, history and model configuration unchanged.",
   "safetyNotes": "Host-owned model completions and private per-project history. The trusted renderer uses declared draft actions to insert replies into the main input without sending. Markdown links use shell.openExternal. No plugin-owned network or API key access.",
   "ui": {
     "panel": "renderer/index.html",
