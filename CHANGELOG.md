@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.7
+
+- On shrinking widths, hide the footer chevron first, the reasoning badge second, and truncate the model name only after both are hidden. Restore them in reverse order as space returns.
+- Keep the bottom row, alignment, reasoning selection and send/draft behavior unchanged.
+
+## 0.1.6
+
+- Center the model control vertically with the existing 24px footer buttons.
+- Keep the model picker on the bottom action row at every width; shrink its name and hide the chevron when space is insufficient, without changing picker or send behavior.
+
 ## 0.1.5
 
 - Calculate the model picker's required width from the displayed name's characters and font metrics, reasoning badge, chevron and padding instead of reserving 160px for every model.

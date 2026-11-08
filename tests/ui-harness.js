@@ -140,12 +140,16 @@ window.installSideChatMock = function (win) {
       assert(win.modelDisplayName({ key: "provider/plain-model" }) === "provider/plain-model", "key fallback changed");
       assert($("modelValue").textContent === expected.get("mock/model"), "selected model label mismatch");
     });
-    await check("三个底部操作统一24px高，模型箭头为12px线条SVG", () => {
-      const heights = ["ctxBtn", "insertBtn", "sendBtn"].map(id => $(id).getBoundingClientRect().height);
-      for (const height of heights) assert(Math.abs(height - 24) < 0.2, `unexpected action height ${height}`);
+    await check("模型与左右操作均为24px且垂直居中，箭头保留原SVG", () => {
+      const send = $("sendBtn").getBoundingClientRect(), center = rect => rect.top + rect.height / 2;
+      for (const id of ["ctxBtn", "modelMenuButton", "insertBtn", "sendBtn"]) {
+        const rect = $(id).getBoundingClientRect();
+        assert(Math.abs(rect.height - 24) < 0.2, `unexpected control height: ${id}/${rect.height}`);
+        assert(Math.abs(center(rect) - center(send)) < 0.25, `control not centered: ${id}`);
+      }
+      for (const id of ["modelValue", "thinkingValue"]) if (win.getComputedStyle($(id)).display !== "none") assert(Math.abs(center($(id).getBoundingClientRect()) - center(send)) < 0.25, `model text not centered: ${id}`);
       const arrow = $("modelMenuButton").querySelector("svg.model-chevron");
-      assert(arrow && arrow.getAttribute("aria-hidden") === "true", "SVG chevron missing");
-      assert(Math.abs(arrow.getBoundingClientRect().width - 12) < 0.2, "chevron size mismatch");
+      assert(arrow && arrow.getAttribute("aria-hidden") === "true" && parseFloat(win.getComputedStyle(arrow).width) === 12, "SVG chevron changed");
       assert(!$("modelMenuButton").textContent.includes("⌄"), "text arrow remains");
     });
     await check("上下文仅显示图标与开关，状态可切换并保存", async () => {
@@ -265,81 +269,108 @@ window.installSideChatMock = function (win) {
       win.__mock.change("project:a", "session-a-0003", false);
       await waitFor(() => win.scope().sessionId === "session-a-0003", "pull recovery failed");
     });
-    await check("剩余空间达到模型最小宽度即并入底行，临界前后1px及常用宽度不越界", async () => {
+    await check("缩窄依次隐藏箭头、思考深度、最后缩名，放宽时按逆序恢复", async () => {
+      const footer = doc.querySelector(".composer-footer"), actions = doc.querySelector(".composer-actions"), arrow = doc.querySelector(".model-chevron");
+      const model = win.eval('state.models.find(model => model.key === state.settings.modelKey)'), originalAlias = model.alias;
+      const setWidth = async width => { frame.style.width = `${width}px`; await waitFor(() => { if (win.innerWidth !== width) return false; win.updateFooterLayout(); return true; }, `priority width not ready: ${width}`); };
+      window.__priorityResults = [];
+      try {
+        for (const name of ["gpt-6.1-sol", "gemini-4-argon-high", "中文模型🚀", "W".repeat(120)]) {
+          model.alias = name; win.renderModelPicker(); await setWidth(2000);
+          const style = win.getComputedStyle($("modelMenuButton")), gap = parseFloat(style.columnGap), padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+          const full = parseFloat(win.getComputedStyle(footer).getPropertyValue("--model-min-width"));
+          const noArrow = full - Math.round(parseFloat(win.getComputedStyle(arrow).width) + gap);
+          const nameOnly = Math.ceil($("modelValue").getBoundingClientRect().width + padding);
+          const fixed = win.innerWidth - footer.clientWidth + $("ctxBtn").offsetWidth + actions.offsetWidth + parseFloat(win.getComputedStyle(footer).columnGap) * 2;
+          const cases = [[full + 1, true, true, false], [full, true, true, false], [full - 1, false, true, false], [noArrow + 1, false, true, false], [noArrow, false, true, false], [noArrow - 1, false, false, false], [nameOnly + 1, false, false, false], [nameOnly, false, false, false], [nameOnly - 1, false, false, null], [nameOnly - 4, false, false, true]];
+          for (const [available, arrowVisible, thinkingVisible, clipped] of [...cases, ...cases.slice().reverse()]) {
+            const width = Math.ceil(fixed + available); await setWidth(width);
+            for (let repeat = 0; repeat < 3; repeat++) {
+              win.updateFooterLayout();
+              assert((win.getComputedStyle(arrow).display !== "none") === arrowVisible, `arrow priority mismatch: ${name}/${width}`);
+              assert((win.getComputedStyle($("thinkingValue")).display !== "none") === thinkingVisible, `thinking priority mismatch: ${name}/${width}`);
+            }
+            const truncated = $("modelValue").scrollWidth > $("modelValue").clientWidth + 1;
+            if (clipped !== null) assert(truncated === clipped, `name shrank at wrong stage: ${name}/${width}`);
+            assert(!thinkingVisible || !truncated, "name truncated before thinking depth disappeared");
+            assert($("modelMenuButton").title.includes(name), "full-name tooltip changed");
+            const trigger = $("modelMenuButton").getBoundingClientRect(), send = $("sendBtn").getBoundingClientRect();
+            assert(Math.abs(trigger.top - send.top) < 0.25 && Math.abs(trigger.height - send.height) < 0.25, "priority change moved the model off the bottom row");
+            window.__priorityResults.push({ name, width, available, arrowVisible, thinkingVisible, truncated });
+          }
+        }
+      } finally { model.alias = originalAlias; frame.style.width = "420px"; win.renderSelects(); }
+    });
+    await check("模型固定底栏，临界宽度隐藏箭头、缩小名称且不改变按钮位置", async () => {
       window.__layoutResults = [];
-      const footer = doc.querySelector(".composer-footer"), actions = doc.querySelector(".composer-actions");
-      const style = win.getComputedStyle(footer), minimum = parseFloat(style.getPropertyValue("--model-min-width")), gap = parseFloat(style.columnGap);
-      assert(minimum > 0, "model minimum width not declared");
+      const footer = doc.querySelector(".composer-footer"), actions = doc.querySelector(".composer-actions"), center = rect => rect.top + rect.height / 2;
+      const minimum = parseFloat(win.getComputedStyle(footer).getPropertyValue("--model-min-width")), gap = parseFloat(win.getComputedStyle(footer).columnGap);
       const threshold = Math.ceil(win.innerWidth - footer.clientWidth + $("ctxBtn").offsetWidth + actions.offsetWidth + gap * 2 + minimum);
       const widths = [...new Set([260, 300, 320, threshold - 1, threshold, threshold + 1, 360, 420, 504, 640])].sort((a, b) => a - b);
       for (const width of widths) {
         frame.style.width = `${width}px`;
-        await waitFor(() => {
-          const room = footer.clientWidth - $("ctxBtn").offsetWidth - actions.offsetWidth - gap * 2;
-          return win.innerWidth === width && footer.dataset.modelStacked === String(room < minimum);
-        }, `layout did not settle at ${width}`);
-        assert(doc.documentElement.scrollWidth <= win.innerWidth + 1, `page overflow at ${width}`);
-        const a = $("ctxBtn").getBoundingClientRect(), b = $("insertBtn").getBoundingClientRect(), send = $("sendBtn").getBoundingClientRect(), model = $("modelMenuButton").getBoundingClientRect();
-        assert(send.right <= win.innerWidth && a.left >= 0, `control overflow ${width}`);
-        assert(Math.abs(a.top - b.top) < 1 && Math.abs(b.top - send.top) < 1, `actions not on one row ${width}`);
-        assert(send.left - b.right >= 0 && send.left - b.right <= 8, `return not adjacent to send ${width}`);
-        const available = footer.clientWidth - $("ctxBtn").offsetWidth - actions.offsetWidth - gap * 2;
-        const stacked = available < minimum;
-        if (stacked) assert(model.bottom + 4 <= send.top, `model should remain above at ${width}`);
-        else assert(Math.abs(model.top + model.height / 2 - send.top - send.height / 2) < 1, `model should move down once ${minimum}px fits at ${width}`);
-        for (const height of [a.height, b.height, send.height]) assert(Math.abs(height - 24) < 0.2, `action height differs at ${width}`);
-        window.__layoutResults.push({ width, available, minimum, stacked, modelTop: model.top, switchTop: a.top, returnTop: b.top, sendTop: send.top, heights: [a.height, b.height, send.height], returnSendGap: send.left - b.right });
+        await waitFor(() => win.innerWidth === width && footer.dataset.modelCompact === String(footer.clientWidth - $("ctxBtn").offsetWidth - actions.offsetWidth - gap * 2 < minimum), `compact layout did not settle: ${width}`);
+        const send = $("sendBtn").getBoundingClientRect(), model = $("modelMenuButton").getBoundingClientRect(), context = $("ctxBtn").getBoundingClientRect(), insert = $("insertBtn").getBoundingClientRect();
+        for (const id of ["ctxBtn", "modelMenuButton", "insertBtn", "sendBtn", "modelValue", "thinkingValue"]) if (win.getComputedStyle($(id)).display !== "none") assert(Math.abs(center($(id).getBoundingClientRect()) - center(send)) < 0.25, `not centered on bottom row: ${id}/${width}`);
+        assert(Math.abs(footer.getBoundingClientRect().height - 24) < 0.2, `footer expanded into extra rows: ${width}`);
+        assert(context.right <= model.left && model.right <= insert.left && insert.right <= send.left, `controls overlap: ${width}`);
+        assert(send.right <= win.innerWidth && doc.documentElement.scrollWidth <= win.innerWidth + 1, `page overflow: ${width}`);
+        assert(send.left - insert.right <= 8, "return/send spacing changed");
+        const compact = footer.dataset.modelCompact === "true", arrow = doc.querySelector(".model-chevron");
+        assert((win.getComputedStyle(arrow).display === "none") === compact, `arrow visibility mismatch: ${width}`);
+        if (compact) assert(arrow.getBoundingClientRect().width === 0, "hidden arrow still occupies space");
+        window.__layoutResults.push({ width, compact, nameWidth: $("modelValue").getBoundingClientRect().width, modelCenter: center(model), sendCenter: center(send), footerHeight: footer.getBoundingClientRect().height });
         $("modelMenuButton").click();
-        const menu = $("modelMenu").getBoundingClientRect(), trigger = $("modelMenuButton").getBoundingClientRect();
-        assert(menu.left >= 0 && menu.right <= win.innerWidth && menu.top >= 0 && menu.bottom <= trigger.top, `menu outside viewport ${width}`);
-        for (const level of ["xhigh", "max"]) {
-          const option = doc.querySelector(`[data-level="${level}"]`).getBoundingClientRect();
-          assert(option.left >= menu.left && option.right <= menu.right && option.top >= menu.top && option.bottom <= menu.bottom, `reasoning option clipped ${level} at ${width}`);
-        }
+        const menu = $("modelMenu").getBoundingClientRect();
+        assert(menu.left >= 0 && menu.right <= win.innerWidth && menu.top >= 0 && menu.bottom <= model.top, `menu outside viewport: ${width}`);
+        for (const level of ["xhigh", "max"]) { const option = doc.querySelector(`[data-level="${level}"]`).getBoundingClientRect(); assert(option.left >= menu.left && option.right <= menu.right && option.bottom <= menu.bottom, "reasoning option clipped"); }
         $("modelMenuButton").click();
       }
+      assert(window.__layoutResults.find(row => row.width === 260).nameWidth < window.__layoutResults.find(row => row.width === 640).nameWidth, "name area did not shrink");
       frame.style.width = "420px";
     });
-    await check("模型占位随名称字符动态变化，短名下移、长名上移且不越界", async () => {
+    await check("长短及Unicode模型都不离开底栏，箭头隐藏状态稳定且全名可查", async () => {
       const footer = doc.querySelector(".composer-footer"), actions = doc.querySelector(".composer-actions");
       const model = win.eval('state.models.find(model => model.key === state.settings.modelKey)'), originalAlias = model.alias;
-      const names = ["x", "gpt-6.1-sol", "gemini-4-argon-high", "中文模型🚀", "W".repeat(120)];
       window.__dynamicLayoutResults = [];
-      const minima = [];
       try {
-        for (const name of names) {
+        for (const name of ["x", "gpt-6.1-sol", "gemini-4-argon-high", "中文模型🚀", "W".repeat(120)]) {
           model.alias = name; win.renderModelPicker();
           const minimum = parseFloat(win.getComputedStyle(footer).getPropertyValue("--model-min-width"));
-          minima.push(minimum);
           for (const width of [260, 360, 640]) {
             frame.style.width = `${width}px`;
-            const available = () => footer.clientWidth - $("ctxBtn").offsetWidth - actions.offsetWidth - parseFloat(win.getComputedStyle(footer).columnGap) * 2;
-            await waitFor(() => win.innerWidth === width && footer.dataset.modelStacked === String(available() < minimum), `name layout not settled: ${name.length}/${width}`);
-            assert($("modelValue").textContent === name, "model name changed during measurement");
-            assert(doc.documentElement.scrollWidth <= win.innerWidth + 1, `long name overflow: ${width}`);
-            const trigger = $("modelMenuButton").getBoundingClientRect(), arrow = doc.querySelector(".model-chevron").getBoundingClientRect(), badge = $("thinkingValue").getBoundingClientRect();
-            assert(trigger.left >= 0 && trigger.right <= win.innerWidth, "trigger outside viewport");
-            assert(badge.right <= arrow.left && arrow.right <= trigger.right, "badge/arrow overlap");
-            const label = $("modelValue"), truncated = label.scrollWidth > label.clientWidth + 1;
-            if (minimum <= footer.clientWidth) assert(!truncated, `name truncated despite enough space: ${name}/${width}`);
-            else assert(truncated && $("modelMenuButton").title.includes(name), "oversized name has no ellipsis/full title");
-            window.__dynamicLayoutResults.push({ name, characters: [...name].length, width, minimum, stacked: footer.dataset.modelStacked === "true", truncated });
+            const expected = () => String(footer.clientWidth - $("ctxBtn").offsetWidth - actions.offsetWidth - parseFloat(win.getComputedStyle(footer).columnGap) * 2 < minimum);
+            await waitFor(() => win.innerWidth === width && footer.dataset.modelCompact === expected(), `name layout not settled: ${name.length}/${width}`);
+            for (let i = 0; i < 3; i++) { win.updateFooterLayout(); assert(footer.dataset.modelCompact === expected(), "arrow visibility oscillates on remeasurement"); }
+            const trigger = $("modelMenuButton").getBoundingClientRect(), send = $("sendBtn").getBoundingClientRect();
+            assert(Math.abs(trigger.top - send.top) < 0.25 && Math.abs(trigger.height - send.height) < 0.25, "model left the bottom row");
+            assert(doc.documentElement.scrollWidth <= win.innerWidth + 1, "long name causes overflow");
+            assert($("modelValue").textContent === name && $("modelMenuButton").title.includes(name), "display text/full-name tooltip changed");
+            assert($("thinkingValue").getBoundingClientRect().right <= trigger.right + 0.5, "badge spills beyond model control");
+            const compact = footer.dataset.modelCompact === "true", truncated = $("modelValue").scrollWidth > $("modelValue").clientWidth + 1;
+            assert((win.getComputedStyle(doc.querySelector(".model-chevron")).display === "none") === compact, "arrow visibility mismatch");
+            if (truncated) assert(win.getComputedStyle($("thinkingValue")).display === "none", "thinking depth must hide before the name shrinks");
+            window.__dynamicLayoutResults.push({ name, width, compact, truncated, nameWidth: $("modelValue").clientWidth });
           }
         }
-        assert(minima[0] < minima[1] && minima[1] < minima[2] && minima[4] > minima[2], "name length did not change required width");
-        const at360 = window.__dynamicLayoutResults.filter(result => result.width === 360);
-        assert(!at360[0].stacked && !at360[1].stacked && at360[2].stacked, "short/long names still share one fixed breakpoint");
+        assert(window.__dynamicLayoutResults.some(row => row.truncated), "long names were not constrained");
       } finally { model.alias = originalAlias; frame.style.width = "420px"; win.renderSelects(); }
     });
-    await check("推理标签变长或变短时同步重算模型占位", () => {
-      const footer = doc.querySelector(".composer-footer"), original = $("thinkSelect").value, widths = {};
+    await check("窄底栏隐藏思考标记但保留七档选择值和菜单", async () => {
+      const footer = doc.querySelector(".composer-footer"), original = $("thinkSelect").value;
+      frame.style.width = "260px"; await waitFor(() => win.innerWidth === 260, "narrow width not ready");
       try {
-        for (const level of ["off", "minimal", "xhigh", "max"]) {
+        for (const level of ["off", "minimal", "low", "medium", "high", "xhigh", "max"]) {
           $("thinkSelect").value = level; win.renderModelPicker();
-          widths[level] = parseFloat(win.getComputedStyle(footer).getPropertyValue("--model-min-width"));
+          const badge = $("thinkingValue").getBoundingClientRect(), trigger = $("modelMenuButton").getBoundingClientRect(), send = $("sendBtn").getBoundingClientRect();
+          assert($("thinkingValue").textContent === level, `reasoning value changed: ${level}`);
+          assert(Math.abs(trigger.top - send.top) < 0.25 && win.getComputedStyle($("thinkingValue")).display === "none" && badge.width === 0, `reasoning badge not hidden: ${level}`);
+          assert(footer.dataset.modelCompact === "true" && win.getComputedStyle(doc.querySelector(".model-chevron")).display === "none", "narrow arrow remains");
+          $("modelMenuButton").click();
+          assert(doc.querySelectorAll(".thinking-option").length === 7, "hiding the badge removed reasoning choices");
+          $("modelMenu").dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         }
-        assert(widths.minimal > widths.off && widths.xhigh > widths.max, "reasoning badge width was ignored");
-      } finally { $("thinkSelect").value = original; win.renderSelects(); }
+      } finally { $("thinkSelect").value = original; frame.style.width = "420px"; win.renderSelects(); }
     });
     await check("浅色/深色下顶部、消息区、输入区配色一致", () => {
       for (const theme of ["light", "dark"]) {

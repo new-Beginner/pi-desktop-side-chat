@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.vastsa.side-chat",
   "name": "Side Chat",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
   "i18n": {
     "en": {
@@ -25,7 +25,7 @@
   "rendererActions": ["plugin.call", "composer.readDraft", "composer.insertText"],
   "rendererCallMethods": ["takeDraft", "finishDraft"],
   "categories": ["productivity"],
-  "changelog": "Release 0.1.5: size the model picker dynamically from the model name and reasoning label, keeping short names compact and long names readable without overflow.",
+  "changelog": "Release 0.1.7: hide the footer chevron first, then the reasoning badge, and only then truncate the model name as width decreases.",
   "safetyNotes": "Host-owned model completions and private per-project history. The trusted renderer uses declared draft actions to insert replies into the main input without sending. Markdown links use shell.openExternal. No plugin-owned network or API key access.",
   "ui": {
     "panel": "renderer/index.html",

@@ -8,7 +8,7 @@ PI-Desktop plugin: a chat docked in the right work panel.
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.5 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
+Version 0.1.7 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
 
 ## Install
 
@@ -39,7 +39,7 @@ Version 0.1.3 adds the high-risk `renderer.extension` grant for draft-only retur
 - Markdown headings, nested lists, fenced code, tables and links are rendered locally and sanitized. Raw HTML is not executed; remote images become alt text. Copy keeps the original Markdown.
 - The side chat follows the selected host session. Events update docked views immediately; a two-second read-only pull repairs missed events and covers detached windows. Stale send/writeback requests are refused rather than retargeted.
 - The icon-only context switch keeps its saved setting. The return icon sits immediately beside Send and inserts the latest successful assistant reply at the main input's caret without auto-send. Draft generation changes, session switches, timeouts and unload cancel stale writes. A single insert is limited by the host to 32 KiB UTF-8; oversized replies are refused, not truncated.
-- The model picker joins the action row when the available gap fits its dynamically calculated width: the name's characters and font metrics plus the reasoning label, chevron and padding. Short names need less space; long names move above the actions when necessary. Oversized names use an ellipsis with the full name in the tooltip. The context, return and Send controls share a 24px height; other spacing is unchanged.
+- The model picker stays on the bottom action row and shares the buttons' 24px height with vertically centered text. As space decreases, hide the chevron first, then the reasoning badge, and only then shrink the model name. Restore these in reverse order as space returns. Hiding the reasoning badge does not change the selected effort or the menu choices. Oversized names retain an ellipsis and full-name tooltip. Other spacing and picker/send behavior are unchanged.
 - Histories are stored separately by host project id (or normalized project path on hosts without that metadata). Switch projects to restore the appropriate history, or use the drawer's project filter to browse other projects read-only.
 - Old unscoped history is backed up as `conversations.v1.json` and remains accessible under “Legacy history (unassigned)”. New history uses a project-scoped v2 file; existing 40-conversation / 80-message limits now apply per project.
 

@@ -243,8 +243,8 @@
       .switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px #0002; }
       .context-toggle[aria-checked="true"] .switch-track { background: var(--accent); }
       .context-toggle[aria-checked="true"] .switch-track::after { transform: translateX(14px); }
-      .model-control { position: static; display: flex; justify-content: flex-end; min-width: min(var(--model-min-width), 100%); }
-      .model-trigger { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; min-height: 32px; padding: 3px 6px; border: 0; border-radius: 6px; color: var(--ink); background: transparent; }
+      .model-control { position: static; display: flex; justify-content: flex-end; min-width: 0; }
+      .model-trigger { display: flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; height: var(--footer-control-height); min-height: var(--footer-control-height); padding: 0 6px; border: 0; border-radius: 6px; color: var(--ink); background: transparent; }
       .composer-footer .context-toggle, .composer-footer .return-draft, .composer-footer .send { height: var(--footer-control-height); min-height: var(--footer-control-height); padding-block: 0; }
       .model-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
       .thinking-value { flex: none; padding: 1px 6px; border-radius: 5px; font-size: 12px; color: var(--muted); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
@@ -262,10 +262,8 @@
       .model-thinking { display: flex; align-items: center; gap: 6px; padding: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
       .thinking-options { display: flex; flex: 1; flex-wrap: wrap; gap: 2px; }
       .thinking-option { flex: 1; padding: 4px; border: 0; border-radius: 5px; color: var(--ink); background: transparent; }
-      .composer-footer[data-model-stacked="true"] { grid-template-columns: minmax(0, 1fr) auto; }
-      .composer-footer[data-model-stacked="true"] .model-control { grid-column: 1 / -1; grid-row: 1; }
-      .composer-footer[data-model-stacked="true"] .context-toggle { grid-column: 1; grid-row: 2; justify-self: start; }
-      .composer-footer[data-model-stacked="true"] .composer-actions { grid-column: 2; grid-row: 2; }
+      .composer-footer[data-model-compact="true"] .model-chevron { display: none; }
+      .composer-footer[data-thinking-hidden="true"] .thinking-value { display: none; }
       textarea {
         width: 100%;
         min-height: 44px;
@@ -337,7 +335,7 @@
       <div class="box">
         <textarea id="input" rows="2"></textarea>
       </div>
-      <div class="composer-footer" data-model-stacked="true">
+      <div class="composer-footer" data-model-compact="false">
         <button class="context-toggle" id="ctxBtn" type="button" role="switch" aria-checked="false" data-i18n-title="includeSession" data-i18n-label="includeSession">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18v3l4-3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 1 3Z"/><path d="M8 9h8M8 13h5"/></svg>
           <span class="switch-track" aria-hidden="true"></span>
@@ -611,22 +609,30 @@
 
       const modelTextMeasure = document.createElement("canvas").getContext("2d");
 
+      function measureFooterText(node) {
+        const style = getComputedStyle(node), characters = Array.from(node.textContent);
+        modelTextMeasure.font = style.font;
+        return modelTextMeasure.measureText(characters.join("")).width
+          + Math.max(0, characters.length - 1) * (parseFloat(style.letterSpacing) || 0)
+          + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      }
+
       function updateFooterLayout() {
         const footer = document.querySelector(".composer-footer");
         const style = getComputedStyle(footer);
-        const labelStyle = getComputedStyle($("modelValue")), triggerStyle = getComputedStyle($("modelMenuButton"));
-        const characters = Array.from($("modelValue").textContent);
-        modelTextMeasure.font = labelStyle.font;
-        const nameWidth = modelTextMeasure.measureText(characters.join("")).width
-          + Math.max(0, characters.length - 1) * (parseFloat(labelStyle.letterSpacing) || 0);
-        const minimum = Math.ceil(nameWidth + $("thinkingValue").getBoundingClientRect().width
-          + document.querySelector(".model-chevron").getBoundingClientRect().width
-          + 2 * (parseFloat(triggerStyle.columnGap) || 0)
-          + parseFloat(triggerStyle.paddingLeft) + parseFloat(triggerStyle.paddingRight));
+        const triggerStyle = getComputedStyle($("modelMenuButton"));
+        const triggerGap = parseFloat(triggerStyle.columnGap) || 0;
+        const padding = parseFloat(triggerStyle.paddingLeft) + parseFloat(triggerStyle.paddingRight);
+        // Measure intrinsic widths even while hidden, so resize thresholds stay stable.
+        const nameWidth = measureFooterText($("modelValue")), thinkingWidth = measureFooterText($("thinkingValue"));
+        const minimum = Math.ceil(nameWidth + thinkingWidth
+          + parseFloat(getComputedStyle(document.querySelector(".model-chevron")).width) + triggerGap * 2 + padding);
+        const withoutArrow = Math.ceil(nameWidth + thinkingWidth + triggerGap + padding);
         footer.style.setProperty("--model-min-width", `${minimum}px`);
         const gap = parseFloat(style.columnGap) || 0;
         const available = footer.clientWidth - $("ctxBtn").offsetWidth - footer.querySelector(".composer-actions").offsetWidth - gap * 2;
-        footer.dataset.modelStacked = String(available < minimum);
+        footer.dataset.modelCompact = String(available < minimum);
+        footer.dataset.thinkingHidden = String(available < withoutArrow);
       }
 
       let modelProvider = "";
