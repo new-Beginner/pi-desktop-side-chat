@@ -8,9 +8,9 @@ PI-Desktop plugin: a chat docked in the right work panel.
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.12 keeps the declared PI-Desktop >=0.21.1-0 requirement. Attachment startup and the wrapped status response are regression-tested against the installed 0.22.0 Runner/sidecar without model calls; this is not an end-to-end model test.
+Version 0.1.13 keeps the declared PI-Desktop >=0.21.1-0 requirement. Clipboard files can be pasted directly into the sidebar input. Automated checks construct paste events in real Chromium and verify installed 0.22.0 Runner/sidecar contracts; OS-clipboard and model acceptance remain separate.
 
-Select/remove/drop images and files, including attachment-only messages: up to 8 per send, 10 MB per file and a 20 MB private cache per conversation. Reload and explicitly grant agent.extension when first adding that permission. Version 0.1.12 adds no permissions, preserves the versioned guard introduced in 0.1.11 and correctly unwraps Agent status responses. Read/Glob/Grep only, no writes, shell or session controls. Keep optional main-session context and draft-only return. Image understanding depends on a vision-capable model; binary document parsing is not guaranteed. See docs/attachments-0.1.10.zh-CN.md for prerequisites, repairs and acceptance steps.
+Paste clipboard images/files with Ctrl+V in the input, or select/remove/drop them, including attachment-only messages: up to 8 per send, 10 MB per file and a 20 MB private cache per conversation. Text paste remains native; pasting adds attachments without automatically uploading or sending. File paths or links supplied only as text are not opened. Reload and explicitly grant agent.extension when first adding that permission; 0.1.13 adds no permissions and keeps the existing read-only backend. Keep optional main-session context and draft-only return. Image understanding depends on a vision-capable model; binary document parsing is not guaranteed. See docs/attachments-0.1.10.zh-CN.md for prerequisites, paste checks and acceptance steps.
 
 ## Install
 

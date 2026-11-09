@@ -2,7 +2,7 @@
 window.runAttachmentChecks = async function () {
   const win = document.getElementById("app").contentWindow, doc = win.document, $ = id => doc.getElementById(id);
   const original = win.pluginBridge.invoke, history = JSON.stringify(win.__mock.snapshots), mainDraft = document.getElementById("mainDraft").value;
-  const rows = [], uploads = new Map(), sends = []; let next = 0, rejectUpload = false;
+  const rows = [], uploads = new Map(), sends = []; let next = 0, rejectUpload = false, pickerClicks = 0;
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const wait = async fn => { for (let i = 0; i < 150; i++) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } throw Error("Attachment UI timed out"); };
   const check = async (name, fn) => { try { await fn(); rows.push({ name, passed: true }); } catch (error) { rows.push({ name, passed: false, error: error.message }); } };
@@ -11,6 +11,15 @@ window.runAttachmentChecks = async function () {
   const file = new win.File(["SIDE-FILE-123 中文文本"], "note.txt", { type: "text/plain" });
   const select = files => { const data = new win.DataTransfer(); files.forEach(f => data.items.add(f)); $("attachmentInput").files = data.files; $("attachmentInput").dispatchEvent(new win.Event("change", { bubbles: true })); };
   const removeAll = () => [...doc.querySelectorAll(".attachment-chip button")].forEach(b => b.click());
+  const trackPicker = () => { pickerClicks++; };
+  $("attachmentInput").addEventListener("click", trackPicker);
+  const paste = (selected, { text = "", html = "", itemsOnly = false } = {}) => {
+    const data = new win.DataTransfer(); selected.forEach(file => data.items.add(file));
+    if (text) data.setData("text/plain", text); if (html) data.setData("text/html", html);
+    const event = new win.ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true });
+    if (itemsOnly) Object.defineProperty(event, "clipboardData", { value: { files: [], items: data.items, getData: type => data.getData(type) } });
+    $("input").dispatchEvent(event); return event;
+  };
   win.pluginBridge.invoke = async (channel, payload) => {
     if (channel === "chat.attachment.begin") {
       if (rejectUpload) throw Error("test upload failed");
@@ -88,8 +97,55 @@ window.runAttachmentChecks = async function () {
       assert(!/授权|重新加载|grant|reload/i.test(message), "guard timeout blamed user authorization");
       assert(win.formatError("PERMISSION_DENIED: agent.extension") === win.t("attachmentsReload"), "actual permission error lost its guidance");
     });
+    await check("粘贴事件一次加入图片与文件，不打开选择器、不上传或发送", () => {
+      removeAll(); const sent = sends.length, uploaded = uploads.size; $("input").value = "保留已有问题";
+      const event = paste([image, file]);
+      assert(event.defaultPrevented && doc.querySelectorAll(".attachment-chip").length === 2, "clipboard files missing or duplicated");
+      assert($("input").value === "保留已有问题" && pickerClicks === 0, "paste changed text or opened file picker");
+      assert(sends.length === sent && uploads.size === uploaded, "paste uploaded or sent immediately"); removeAll();
+    });
+    await check("粘贴附件经过原上传链路发送，PNG与UTF-8字节不变", async () => {
+      removeAll(); const sent = sends.length, uploaded = uploads.size; paste([image, file]);
+      $("input").value = "读取粘贴的附件"; $("form").requestSubmit(); await wait(() => sends.length === sent + 1 && !$("sendBtn").disabled);
+      assert(sends.at(-1).attachments?.length === 2 && sends.at(-1).text === "读取粘贴的附件", "pasted files lost from send payload");
+      const added = [...uploads.values()].slice(uploaded), picture = added.find(item => item.name === "pixel.png"), note = added.find(item => item.name === "note.txt");
+      assert(picture && note && picture.chunks[0] === pngSource, "pasted PNG bytes changed");
+      assert(new TextDecoder().decode(Uint8Array.from(atob(note.chunks[0]), c => c.charCodeAt(0))) === "SIDE-FILE-123 中文文本", "pasted text file bytes changed");
+      assert($("attachmentList").hidden && $("input").value === "", "accepted pasted selection not cleared");
+    });
+    await check("仅clipboardData.items提供文件时仍能直接粘贴", () => {
+      removeAll(); const event = paste([image], { itemsOnly: true });
+      assert(event.defaultPrevented && doc.querySelectorAll(".attachment-chip").length === 1, "file item fallback failed"); removeAll();
+    });
+    await check("文字与文件混合粘贴保留浏览器原生文字插入", () => {
+      removeAll(); $("input").value = "已有文字"; const event = paste([file], { text: "追加的文字" });
+      assert(!event.defaultPrevented && doc.querySelectorAll(".attachment-chip").length === 1, "mixed paste swallowed text or file");
+      assert($("input").value === "已有文字", "handler rewrote the draft instead of allowing native insertion"); removeAll();
+    });
+    await check("普通文本、路径及HTML粘贴不拦截，不自动读取路径或网页图片", () => {
+      removeAll(); const sent = sends.length, uploaded = uploads.size;
+      const event = paste([], { text: "D:/not-selected.txt\n中文文本", html: '<img src="https://example.invalid/image.png">' });
+      assert(!event.defaultPrevented && $("attachmentList").hidden, "ordinary text treated as an attachment");
+      assert(sends.length === sent && uploads.size === uploaded && !$("attachmentList").querySelector("img"), "paste imported an unselected path or HTML image");
+    });
+    await check("粘贴继续遵守8个附件与单文件10MB限制", () => {
+      removeAll(); paste(Array.from({ length: 9 }, (_, i) => new win.File(["x"], `paste-${i}.txt`, { type: "text/plain" })));
+      assert(doc.querySelectorAll(".attachment-chip").length === 8 && $("hint").textContent === win.t("attachmentLimit"), "paste bypassed attachment count limit"); removeAll();
+      paste([new win.File([new Uint8Array(10_000_001)], "too-large.bin")]);
+      assert($("attachmentList").hidden && $("hint").textContent === win.t("attachmentLimit"), "paste bypassed file size limit");
+    });
+    await check("忙碌及跨项目只读时忽略粘贴附件，主草稿保持不变", async () => {
+      removeAll(); const state = win.eval("state"), pending = state.pending;
+      try { state.pending = true; win.renderAll(); paste([file]); assert($("attachmentList").hidden, "busy conversation accepted pasted files"); }
+      finally { state.pending = pending; win.renderAll(); }
+      const current = win.scope().projectKey, other = current === "project:a" ? "project:b" : "project:a";
+      try { await win.showHistory("chat.history", { projectKey: other }); paste([file]); assert($("attachmentList").hidden, "read-only history accepted pasted files"); }
+      finally { await win.showHistory("chat.history", { projectKey: current }); }
+      assert(document.getElementById("mainDraft").value === mainDraft && pickerClicks === 0, "paste changed main draft or used picker");
+    });
   } finally {
     rejectUpload = false; removeAll(); win.pluginBridge.invoke = original;
+    $("attachmentInput").removeEventListener("click", trackPicker);
     const saved = JSON.parse(history); for (const key of Object.keys(win.__mock.snapshots)) delete win.__mock.snapshots[key]; Object.assign(win.__mock.snapshots, saved);
     $("input").value = ""; await win.refreshContext(); win.renderAll(); win.hint("");
   }

@@ -39,6 +39,15 @@
     input.addEventListener("change", () => { addFiles([...input.files]); input.value = ""; });
     box.addEventListener("dragover", event => { if ([...(event.dataTransfer?.types || [])].includes("Files")) event.preventDefault(); });
     box.addEventListener("drop", event => { if (event.dataTransfer?.files.length) { event.preventDefault(); addFiles([...event.dataTransfer.files]); } });
+    document.getElementById("input").addEventListener("paste", event => {
+      const data = event.clipboardData;
+      let pasted = [...(data?.files || [])];
+      if (!pasted.length) pasted = [...(data?.items || [])].filter(item => item.kind === "file").map(item => item.getAsFile()).filter(Boolean);
+      if (!pasted.length) return;
+      // Keep native text insertion for mixed clipboard content; never read paths or HTML.
+      if (!data.getData("text/plain")) event.preventDefault();
+      addFiles(pasted);
+    });
     return {
       sync, addFiles,
       hasFiles: () => { sync(); return files.length > 0; },

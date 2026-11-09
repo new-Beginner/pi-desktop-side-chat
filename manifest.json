@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "com.vastsa.side-chat",
   "name": "Side Chat",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
   "i18n": {
     "en": {
@@ -25,7 +25,7 @@
   "rendererActions": ["plugin.call", "composer.readDraft", "composer.insertText"],
   "rendererCallMethods": ["takeDraft", "finishDraft"],
   "categories": ["productivity"],
-  "changelog": "Release 0.1.12: correctly unwrap the official Agent status response, reject malformed status data and preserve strict side-session identity checks. No new permissions.",
+  "changelog": "Release 0.1.13: paste clipboard images and files directly into the sidebar input, preserve native text paste and reuse existing attachment limits and upload behavior. No new permissions.",
   "safetyNotes": "User-selected attachment bytes are stored in plugin-private per-conversation caches. Separate Plan sessions and an explicitly granted Agent extension restrict attachment Q&A to read tools. This is not an OS sandbox. No provider credentials, automatic main-session sending or main-composer attachment access.",
   "ui": {
     "panel": "renderer/index.html",

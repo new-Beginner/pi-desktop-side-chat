@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.13
+
+- Accept clipboard images and files directly in the sidebar input using standard paste events, including multiple files and file-item fallback.
+- Preserve native text paste and reuse the existing attachment queue, limits and upload path; pasting never opens the picker, uploads or sends automatically.
+- Add clipboard UI regressions without new permissions or backend/layout changes.
+
 ## 0.1.12
 
 - Read agent/getStatus as the official { status: AgentStatus } envelope instead of treating it as a flat object.
