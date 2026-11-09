@@ -400,3 +400,80 @@ test("attachment metadata survives store reload without changing legacy text mes
   assert.deepEqual(restored.active().messages[0], { ...before, error: false });
   assert.deepEqual(restored.active().messages[1].attachments, [file]);
 });
+
+test("cold path and host-ID changes do not list automatic empty shadow histories", async () => {
+  const h = host(); h.switchTo("a1", "D:/projects/A"); const cold = await boot(h);
+  assert.equal(cold.context.projectKey, "path:d:/projects/a");
+  h.setWorkspace({ path: "D:/projects/A", name: "A", projectId: "project-a" });
+  const warm = await h.api.onPanelInvoke("chat.context");
+  assert.deepEqual(Array.from(warm.projects, p => p.key), ["general", "project:project-a"]);
+  h.setWorkspace({ path: "D:/projects/A", name: "A" });
+  const missing = await h.api.onPanelInvoke("chat.context");
+  assert.deepEqual(Array.from(missing.projects, p => p.key), ["general", "path:d:/projects/a"]);
+  h.setWorkspace({ path: "D:/projects/A", name: "A", projectId: "project-a" });
+  const again = await h.api.onPanelInvoke("chat.context");
+  assert.deepEqual(Array.from(again.projects, p => p.key), ["general", "project:project-a"]);
+  await h.api.onUnload();
+  const saved = JSON.parse(h.files.get("/private/conversations.json"));
+  assert.ok(saved.projects.some(p => p.key === cold.context.projectKey), "hidden shadows must not be deleted");
+});
+test("legacy project IDs and unrelated empty projects do not pollute the history picker", async () => {
+  const h = host(); h.switchTo("a1", "D:/projects/A", "legacy:D:/projects/A"); await boot(h);
+  h.switchTo("a2", "D:/projects/A", "project-a");
+  let data = await h.api.onPanelInvoke("chat.context");
+  assert.deepEqual(Array.from(data.projects, p => p.key), ["general", "project:project-a"]);
+  h.switchTo("b1", "D:/projects/B", "project-b"); await h.api.onPanelInvoke("chat.context");
+  h.switchTo("a2", "D:/projects/A", "project-a"); data = await h.api.onPanelInvoke("chat.context");
+  assert.ok(!data.projects.some(p => p.key === "project:project-b"));
+  const target = { sessionId: data.context.sessionId, projectKey: data.context.projectKey };
+  const created = await h.api.onPanelInvoke("chat.new", target);
+  const selected = await h.api.onPanelInvoke("chat.select", { ...target, id: created.snapshot.activeId });
+  const history = await h.api.onPanelInvoke("chat.history", target);
+  const removed = await h.api.onPanelInvoke("chat.delete", { ...target, id: created.snapshot.activeId });
+  for (const reply of [created, selected, history, removed]) assert.deepEqual(Array.from(reply.projects, p => p.key), ["general", "project:project-a"]);
+});
+test("hidden empty saved buckets survive reload byte-for-structure while real same-name histories stay separate", async () => {
+  const state = (id, messages = [], title = "") => ({ version: 1, activeId: id, conversations: [{ id, title, createdAt: "2026-01-01", updatedAt: "2026-01-01", messages }] });
+  const message = value => ({ id: value, role: "user", content: value, createdAt: "2026-01-01", error: false });
+  const initial = { version: 2, projects: [
+    { key: "path:d:/projects/a", name: "A", state: state("shadow") },
+    { key: "project:legacy:D:/projects/A", name: "A", state: state("legacy-shadow") },
+    { key: "project:project-a", name: "A", state: state("a", [message("A-only")]) },
+    { key: "project:other-a", name: "A", state: state("b", [message("other-A-only")]) },
+    { key: "project:named-empty", name: "Named", state: state("named", [], "Deliberately named") },
+    { key: "legacy", name: "Legacy history", state: state("old") },
+  ] };
+  const h = host(initial), data = await boot(h);
+  assert.deepEqual(Array.from(data.projects, p => p.key), ["general", "project:project-a", "project:other-a", "project:named-empty", "legacy"]);
+  const other = await h.api.onPanelInvoke("chat.history", { projectKey: "project:other-a" });
+  assert.equal(other.snapshot.conversations[0].messages[0].content, "other-A-only");
+  assert.ok(!JSON.stringify(other.snapshot).includes('"A-only"'));
+  await h.api.onUnload();
+  const saved = JSON.parse(h.files.get("/private/conversations.json"));
+  assert.deepEqual(saved.projects.filter(p => p.key !== "general"), initial.projects);
+  const restored = host(saved), again = await boot(restored);
+  assert.deepEqual(Array.from(again.projects, p => p.key), Array.from(data.projects, p => p.key));
+});
+test("two nonempty identities for the same folder retain messages and attachment IDs without merging", async () => {
+  const h = host(null, { attachments: true }); h.switchTo("a1", "D:/projects/A"); const cold = await boot(h);
+  const target = { ...cold.context, conversationId: cold.snapshot.activeId };
+  const file = await attachThroughPanel(h, target, "old.txt", Buffer.from("old scoped attachment"));
+  await settle(h, (await h.api.onPanelInvoke("chat.send", { ...target, text: "path history", attachments: [file], includeSession: false })).jobId);
+  h.setWorkspace({ path: "D:/projects/A", name: "A", projectId: "project-a" });
+  const job = await send(h, "project ID history"); await settle(h, job.jobId);
+  const data = await h.api.onPanelInvoke("chat.context");
+  assert.equal(data.projects.filter(p => p.name === "A").length, 2, "nonempty histories cannot be merged by name/path");
+  const old = await h.api.onPanelInvoke("chat.history", { projectKey: cold.context.projectKey });
+  assert.equal(old.snapshot.conversations[0].messages[0].attachments[0].id, file.id);
+  assert.ok(!JSON.stringify(old.snapshot).includes("project ID history"));
+  await assert.rejects(h.api.onPanelInvoke("chat.delete", { projectKey: cold.context.projectKey, id: old.snapshot.activeId }), { code: "STALE_CONTEXT" });
+});
+test("repeated context refreshes and Windows slash/case variants do not create duplicate keys", async () => {
+  const h = host(); h.switchTo("a1", "D:/projects/A"); const first = await boot(h);
+  for (let i = 0; i < 10; i++) {
+    h.switchTo("a1", i % 2 ? "d:\\PROJECTS\\a\\" : "D:/projects/A/");
+    const data = await h.api.onPanelInvoke("chat.context");
+    assert.equal(data.context.projectKey, first.context.projectKey);
+    assert.equal(data.projects.filter(p => p.key === first.context.projectKey).length, 1);
+  }
+});

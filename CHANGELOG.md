@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.15
+
+- Hide inactive, untitled and message-free project buckets from the history picker; keep the current project, standalone and unassigned legacy entries.
+- Distinguish same-name nonempty histories by their full project key without merging stores, rewriting IDs or moving attachment caches.
+- Reproduce cold path/host-ID and legacy-ID transitions, verify hidden data survives reload unchanged and retain cross-project read-only boundaries.
+
+## 0.1.14
+
+- Extract DOC/DOCX, XLS/XLSX, PPT/PPTX, text, JSON, C and CUDA contents locally into the official agent/prompt content field, instead of relying on tools to decode Office binaries.
+- Infer image MIME from supported extensions and convert supported single/multi-page TIFF images to real PNG attachments with bounded offline readers and bundled licenses.
+- Retain original files, count extracted copies against the private cache quota, reject unsupported/encrypted/oversized inputs and preserve history when retrying a cancelled first extraction or upgrading an old attachment backend.
+- Add real-format content, formula/cache, pixel, limit, rollback and cancellation regressions. Keep picker/drop/paste, UI, read-only tools, permissions and main/side isolation unchanged.
+
 ## 0.1.13
 
 - Accept clipboard images and files directly in the sidebar input using standard paste events, including multiple files and file-item fallback.

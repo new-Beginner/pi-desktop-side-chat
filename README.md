@@ -8,9 +8,22 @@ PI-Desktop plugin: a chat docked in the right work panel.
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.13 keeps the declared PI-Desktop >=0.21.1-0 requirement. Clipboard files can be pasted directly into the sidebar input. Automated checks construct paste events in real Chromium and verify installed 0.22.0 Runner/sidecar contracts; OS-clipboard and model acceptance remain separate.
+Version 0.1.15 keeps the declared PI-Desktop >=0.21.1-0 requirement and offline attachment content preparation without new permissions. Images require a vision-capable model; Office extraction is not full-page rendering or OCR.
 
-Paste clipboard images/files with Ctrl+V in the input, or select/remove/drop them, including attachment-only messages: up to 8 per send, 10 MB per file and a 20 MB private cache per conversation. Text paste remains native; pasting adds attachments without automatically uploading or sending. File paths or links supplied only as text are not opened. Reload and explicitly grant agent.extension when first adding that permission; 0.1.13 adds no permissions and keeps the existing read-only backend. Keep optional main-session context and draft-only return. Image understanding depends on a vision-capable model; binary document parsing is not guaranteed. See docs/attachments-0.1.10.zh-CN.md for prerequisites, paste checks and acceptance steps.
+| Format | Model input |
+| --- | --- |
+| PNG, JPG/JPEG, WebP, GIF | Original images through official image attachments |
+| TIF/TIFF | Supported single/multi-page RGB, grayscale or palette TIFF converted to PNG; unsupported variants refused |
+| Word: DOC/DOCX | Extracted body text and tables as UTF-8 |
+| Excel: XLS/XLSX | Worksheets/tables and saved values; XLSX formula source is also included, without recalculation |
+| PowerPoint: PPT/PPTX | Slide text and speaker notes |
+| TXT, Markdown, CSV/TSV, JSON, C/C++, CUDA (CU/CUH), etc. | Decoded text supplied as data, never executed |
+
+Select files, drop them, or paste actual clipboard images/files in the input. Document text, JSON and source code may also be pasted as ordinary messages. Plain file paths/links are not imported. Attachments remain queued until Send. Limits: 8 files/converted pages per send, 10 MB per file, 20 MB per conversation including originals and extracted copies; 256,000 UTF-8 bytes per extracted document and 384,000 bytes of combined quoted document JSON. Oversized content is refused, not truncated. Optional main-session context, draft-only return and all other isolation remain unchanged. Explicit agent.extension approval is still needed when first adding that permission.
+
+Real-format samples verify extracted content and official prompt parameters. Installed 0.22.0 Runner/sidecar contracts and constructed Chromium paste events have separate regressions; running-host, OS-clipboard and actual model acceptance remain unverified. See [attachment details](docs/attachments-0.1.10.zh-CN.md) for boundaries, official references and reproduction commands.
+
+Project history hides inactive buckets with no titles or messages. Same-name nonempty histories include their distinct keys; they are never merged or deleted. Keep standalone, unassigned legacy and current empty-project entries, with storage and attachment ownership unchanged. See the [history-duplicate investigation](docs/history-duplicates-0.1.15.zh-CN.md).
 
 ## Install
 
@@ -31,6 +44,7 @@ Command palette: `Side Chat: Open` (detached window).
 | `clipboard.write` | Copy a reply |
 | `shell.openExternal` | Open HTTP(S) / mailto Markdown links through the host permission gateway |
 | `renderer.extension` | Run trusted host-renderer code to insert a reply into the main draft, without sending or copying the user's existing draft to the plugin process |
+| `agent.extension` | Limit independent attachment sessions to Read/Glob/Grep within the attachment directory; not an OS sandbox |
 
 No plugin-owned network. Completions are capped by the host: 8 calls / 60s, 90s timeout.
 

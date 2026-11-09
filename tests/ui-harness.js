@@ -27,7 +27,8 @@ window.installSideChatMock = function (win) {
   const listeners = new Map(), calls = [], jobs = new Map();
   const rendererCalls = [];
   const context = () => ({ projectKey, sessionId, projectName: names[projectKey], projectPath: projectKey === "general" ? "" : `D:/projects/${projectKey}` });
-  const projects = () => Object.entries(names).map(([key, name]) => ({ key, name }));
+  let projectRows = null;
+  const projects = () => projectRows || Object.entries(names).map(([key, name]) => ({ key, name }));
   const current = () => ({ context: context(), snapshot: copy(snapshots[projectKey]), projects: projects() });
   function emit(event, data) { for (const fn of listeners.get(event) || []) fn(data); }
   win.pluginBridge = {
@@ -95,6 +96,7 @@ window.installSideChatMock = function (win) {
   };
   win.__mock = {
     calls, snapshots, rendererCalls,
+    setProjects(rows) { projectRows = rows ? copy(rows) : null; },
     change(key, nextSession, push = true) {
       projectKey = key; sessionId = nextSession;
       if (push) { emit("session:activated", { sessionId, projectPath: context().projectPath }); emit("workspace:changed", { path: context().projectPath }); }
@@ -435,6 +437,31 @@ window.installSideChatMock = function (win) {
       assert($("sendBtn").disabled && $("returnBtn").textContent === "返回独立会话", "standalone return/read-only state incorrect");
       $("returnBtn").click(); await waitFor(() => $("historySelect").value === "general" && !$("sendBtn").disabled, "return did not restore standalone");
       win.__mock.change("project:a", "session-a-0003"); await waitFor(() => $("historySelect").value === "project:a", "project context not restored");
+    });
+    await check("有内容的同名项目以完整身份区分，选择与只读边界不变", async () => {
+      win.__mock.setProjects([{ key: "general", name: "No project" }, { key: "project:a", name: "同名项目" }, { key: "project:b", name: "同名项目" }, { key: "legacy", name: "Legacy history" }]);
+      win.__mock.change("project:a", "history-label-check");
+      await waitFor(() => win.scope().sessionId === "history-label-check" && $("historySelect").textContent.includes("同名项目"), "history label fixture not rendered");
+      const a = [...$("historySelect").options].find(o => o.value === "project:a"), b = [...$("historySelect").options].find(o => o.value === "project:b");
+      assert(a.textContent.includes("project:a") && b.textContent.includes("project:b"), "same-name identities remain visually indistinguishable");
+      assert(a.textContent.includes("当前项目") && !b.textContent.includes("当前项目"), "current-project marker changed");
+      $("historySelect").value = b.value; $("historySelect").dispatchEvent(new win.Event("change"));
+      await waitFor(() => $("historySelect").value === "project:b" && $("log").textContent.includes("B 项目专有消息"), "same-name history cannot be selected");
+      assert($("sendBtn").disabled && $("insertBtn").disabled, "same-name label bypassed read-only browsing");
+      win.__mock.setProjects(null); win.__mock.change("project:a", "session-a-0003");
+      await waitFor(() => $("historySelect").value === "project:a" && !$("sendBtn").disabled, "normal context not restored");
+    });
+    await check("重复刷新不追加历史选项，项目名只按文字显示", async () => {
+      const suspicious = '<img src=x onerror="alert(1)">';
+      win.__mock.setProjects([{ key: "project:a", name: suspicious }, { key: "project:b", name: suspicious }]);
+      for (let i = 0; i < 3; i++) {
+        win.__mock.change("project:a", `history-repeat-${i}`);
+        await waitFor(() => win.scope().sessionId === `history-repeat-${i}` && $("historySelect").options.length === 2, "history options accumulated");
+        assert([...$("historySelect").options].every(o => o.textContent.includes(suspicious) && o.textContent.includes(o.value)), "history identity/name not preserved as text");
+        assert(!$("historySelect").querySelector("img"), "history label interpreted as HTML");
+      }
+      win.__mock.setProjects(null); win.__mock.change("project:a", "session-a-0003");
+      await waitFor(() => $("historySelect").value === "project:a" && $("historySelect").options.length === 4, "normal history options not restored");
     });
     $("log").scrollTop = 0;
     window.__testResult = { passed: results.length, failed: 0, results };

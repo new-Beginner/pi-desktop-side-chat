@@ -190,8 +190,13 @@ function projectSnapshot(projectKey) {
   return { ...item.store.snapshot(), projectKey, projectName: item.name };
 }
 
-function projectList() {
-  return [...projects].map(([key, item]) => ({ key, name: item.name }));
+function projectList(currentProjectKey) {
+  // Context reads create a blank store. It is not historical activity, and
+  // cold path/project-ID snapshots must not leave visible shadow projects.
+  return [...projects]
+    .filter(([key, item]) => key === "general" || key === "legacy" || key === currentProjectKey
+      || item.store.snapshot().conversations.some(conversation => conversation.title.trim() || conversation.messages.length))
+    .map(([key, item]) => ({ key, name: item.name }));
 }
 
 function assertContext(payload, context) {
@@ -203,7 +208,7 @@ function assertContext(payload, context) {
 async function contextSnapshot() {
   const context = await currentContext();
   projectStore(context);
-  return { context, snapshot: projectSnapshot(context.projectKey), projects: projectList() };
+  return { context, snapshot: projectSnapshot(context.projectKey), projects: projectList(context.projectKey) };
 }
 
 function serializeSession(session) {
@@ -454,8 +459,10 @@ async function onPanelInvoke(channel, payload = {}) {
       return bootstrap();
     case "chat.context":
       return contextSnapshot();
-    case "chat.history":
-      return { snapshot: projectSnapshot(String(payload.projectKey || "")), projects: projectList() };
+    case "chat.history": {
+      const context = await currentContext();
+      return { snapshot: projectSnapshot(String(payload.projectKey || "")), projects: projectList(context.projectKey) };
+    }
     case "chat.send":
       return send(payload);
     case "chat.poll":
@@ -465,20 +472,21 @@ async function onPanelInvoke(channel, payload = {}) {
       assertContext(payload, context);
       projectStore(context).newConversation();
       await persist();
-      return { snapshot: projectSnapshot(context.projectKey), projects: projectList() };
+      return { snapshot: projectSnapshot(context.projectKey), projects: projectList(context.projectKey) };
     }
     case "chat.select":
     case "chat.delete": {
       const key = String(payload.projectKey || "");
       const item = projects.get(key);
       if (!item) throw errorWith("NOT_FOUND", "Project history not found");
-      if (channel === "chat.delete" && (await currentContext()).projectKey !== key) {
+      const context = await currentContext();
+      if (channel === "chat.delete" && context.projectKey !== key) {
         throw errorWith("STALE_CONTEXT", "Session changed. Please return to the current project.");
       }
       if (channel === "chat.select") item.store.select(String(payload.id || ""));
       else item.store.deleteConversation(String(payload.id || ""));
       await persist();
-      return { snapshot: projectSnapshot(key), projects: projectList() };
+      return { snapshot: projectSnapshot(key), projects: projectList(context.projectKey) };
     }
     case "chat.setSettings":
       return { settings: await writeSettings(payload || {}) };

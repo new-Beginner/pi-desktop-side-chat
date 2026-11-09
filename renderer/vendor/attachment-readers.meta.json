@@ -1,0 +1,21 @@
+{
+  "packages": {
+    "@mdgate/containers": "0.6.25",
+    "@mdgate/core": "0.6.25",
+    "@mdgate/doc": "0.6.25",
+    "@mdgate/document": "0.6.25",
+    "@mdgate/docx": "0.6.25",
+    "@mdgate/office-common": "0.6.25",
+    "@mdgate/ppt": "0.6.25",
+    "@mdgate/pptx": "0.6.25",
+    "@mdgate/utils": "0.6.25",
+    "@mdgate/xlsx": "0.6.25",
+    "utif": "3.1.0",
+    "pako": "1.0.11",
+    "pngjs": "7.0.0"
+  },
+  "esbuild": "0.25.12",
+  "boundedDecompression": "8 MiB per stream / 32 MiB per document",
+  "sha256": "47369231d39fd95c2a3b4670d8c8172a71a4c9798525bd5ae32946c04ce1ede6",
+  "bytes": 456968
+}

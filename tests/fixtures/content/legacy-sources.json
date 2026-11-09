@@ -1,0 +1,29 @@
+[
+  {
+    "file": "legacy.doc",
+    "repository": "https://github.com/mdgate/converters",
+    "path": "test/fixtures/doc/text.doc",
+    "gitBlob": "7de1e813fe5f5feca45e2d80c86c8a514b704df2",
+    "sha256": "0d7c077cf4b49939a05ccd5f8012164649752be0c5841fa50da6258e0517e6e5",
+    "bytes": 20480,
+    "license": "MIT (Copyright 2026 mdgate)"
+  },
+  {
+    "file": "legacy.xls",
+    "repository": "https://github.com/mdgate/converters",
+    "path": "test/fixtures/xls/sheet.xls",
+    "gitBlob": "6d830f15a96feb7159ea4372a81f6f11e2be1fb5",
+    "sha256": "1b3fc8f35f4c7ad6bb4dcf9b9f1fdf4ddf1f4c7f2f6748f33b7948204f940136",
+    "bytes": 7168,
+    "license": "MIT (Copyright 2026 mdgate)"
+  },
+  {
+    "file": "legacy.ppt",
+    "repository": "https://github.com/mdgate/converters",
+    "path": "test/fixtures/ppt/pres.ppt",
+    "gitBlob": "1e0b433e91394093bde1682779fbd6a8fc1da79a",
+    "sha256": "8b92d2304598dafc977ff309095aa405151ac741d3374b3d5a214377b57765b3",
+    "bytes": 464384,
+    "license": "MIT (Copyright 2026 mdgate)"
+  }
+]

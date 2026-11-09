@@ -560,6 +560,13 @@
         return key === "legacy" ? t("legacy") : key === "general" ? t("general") : name || key;
       }
 
+      function historyLabel(project) {
+        const label = projectName(project.key, project.name);
+        const sameName = state.projects.some(other => other.key !== project.key && projectName(other.key, other.name) === label);
+        // A name is not a project identity. Keep separate nonempty histories selectable.
+        return label + (sameName ? ` [${project.key}]` : "");
+      }
+
       async function refreshContext() {
         const request = ++contextRequest;
         try {
@@ -828,7 +835,7 @@
         list.replaceChildren();
         fillSelect($("historySelect"), [{ label: "", options: state.projects.map((project) => ({
           value: project.key,
-          label: projectName(project.key, project.name) + (project.key !== "general" && project.key === state.context?.projectKey ? ` (${t("thisProject")})` : "")
+          label: historyLabel(project) + (project.key !== "general" && project.key === state.context?.projectKey ? ` (${t("thisProject")})` : "")
         })) }]);
         $("historySelect").value = state.snapshot.projectKey || "";
         const projectKey = state.snapshot.projectKey;
