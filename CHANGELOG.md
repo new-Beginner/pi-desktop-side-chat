@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.12
+
+- Read agent/getStatus as the official { status: AgentStatus } envelope instead of treating it as a flat object.
+- Reject malformed responses before reading replies; keep strict side-session identity checks and side-only aborts.
+- Correct both bridge fixtures and add real installed-sidecar status IPC and running/idle/invalid-response regressions without model calls.
+
+## 0.1.11
+
+- Use a versioned, full Agent-extension entry so PI-Desktop 0.22.0 does not reuse the cached pre-fix attachment guard after plugin reload.
+- Publish sanitized initialization-stage failures through the official extension diagnostics instead of swallowing them.
+- Add manifest-entry and warm-factory regressions using the installed Runner; preserve read-only limits, isolation, UI and permissions.
+
+## 0.1.10
+
+- Add image/file selection, removal, drag-and-drop and attachment-only messages with bounded chunked uploads into private conversation caches.
+- Send attachment conversations through independent Plan-mode host Agent sessions; explicitly granted Agent extension narrows tools to Read/Glob/Grep and rejects out-of-cache access.
+- Preserve ordinary text completions, optional main-session context, history grouping and draft-only return. Require a reload for the new agent.extension permission; do not auto-approve tools.
+
 ## 0.1.9
 
 - Map the plugin palette to host --ds-* tokens with the existing light/dark defaults as fallbacks.

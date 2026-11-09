@@ -3,6 +3,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { createStore } = require("./store");
+const { createAttachments } = require("./attachments.cjs");
 
 const COMMAND_ID = "com.vastsa.side-chat.open";
 const MESSAGE_BUDGET = 180_000;
@@ -23,6 +24,7 @@ let persistChain = Promise.resolve();
 let historyReady = false;
 const jobs = new Map();
 let pendingDraft = null;
+let attachmentSupport = null;
 
 function nid(prefix) {
   return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -279,18 +281,23 @@ async function runComplete(job) {
       const attached = await sessionContext(job.sessionId);
       contextBlock = attached.text;
     }
-    const packed = trimHistory(history, contextBlock ? MESSAGE_BUDGET - contextBlock.length - 64 : MESSAGE_BUDGET);
-    const messages = contextBlock
-      ? [{ role: "user", content: `Current PI-Desktop session transcript:\n\n${contextBlock}` }, ...packed]
-      : packed;
-    let system = SYSTEM_PROMPT;
-    if (system.length > SYSTEM_MAX) system = system.slice(0, SYSTEM_MAX);
-    const result = await pi.agent.complete({
-      modelKey: job.modelKey,
-      thinkingLevel: job.thinkingLevel === "off" ? undefined : job.thinkingLevel,
-      system,
-      messages,
-    });
+    let result;
+    if (job.backend === "agent") {
+      result = { text: await attachmentSupport.run(job, contextBlock) };
+    } else {
+      const packed = trimHistory(history, contextBlock ? MESSAGE_BUDGET - contextBlock.length - 64 : MESSAGE_BUDGET);
+      const messages = contextBlock
+        ? [{ role: "user", content: `Current PI-Desktop session transcript:\n\n${contextBlock}` }, ...packed]
+        : packed;
+      let system = SYSTEM_PROMPT;
+      if (system.length > SYSTEM_MAX) system = system.slice(0, SYSTEM_MAX);
+      result = await pi.agent.complete({
+        modelKey: job.modelKey,
+        thinkingLevel: job.thinkingLevel === "off" ? undefined : job.thinkingLevel,
+        system,
+        messages,
+      });
+    }
     const text = extractText(result).trim() || "(empty reply)";
     job.store.addAssistantMessage(job.conversationId, text);
     await persist();
@@ -313,7 +320,9 @@ async function runComplete(job) {
 
 async function send(payload) {
   const text = String(payload?.text ?? "").trim();
-  if (!text) throw errorWith("INVALID_ARGUMENT", "message is empty");
+  const incoming = payload?.attachments ?? [];
+  if (!Array.isArray(incoming) || incoming.length > 8) throw errorWith("INVALID_ATTACHMENT", "At most eight attachments are allowed");
+  if (!text && !incoming.length) throw errorWith("INVALID_ARGUMENT", "message is empty");
   const settings = await readSettings();
   const models = await listModels();
   const modelKey = pickModel(models, String(payload?.modelKey || settings.modelKey || "").trim());
@@ -326,7 +335,21 @@ async function send(payload) {
   const context = await currentContext();
   assertContext(payload, context);
   const store = projectStore(context);
-  const conversation = store.addUserMessage(text);
+  const selected = store.active();
+  if (payload.conversationId && payload.conversationId !== selected.id) throw errorWith("STALE_CONTEXT", "Session changed. Please send again.");
+  const usesAgent = incoming.length > 0 || selected.messages.some(m => m.attachments?.length);
+  let files = [];
+  if (usesAgent) {
+    const operations = await pi.desktop.listOperations?.();
+    if (!Array.isArray(operations) || !["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"].every(id => operations.some(op => op.id === id))) {
+      throw errorWith("ATTACHMENTS_UNSUPPORTED", "This host does not support independent attachment sessions");
+    }
+    if (incoming.length && payload.conversationId !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
+    files = (await attachmentSupport.resolve({ projectKey: context.projectKey, conversationId: selected.id }, incoming)).map(({ path: _path, ...meta }) => meta);
+    assertContext(payload, await currentContext());
+    if (store.active().id !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
+  }
+  const conversation = store.addUserMessage(text, files);
   await persist();
   const jobId = nid("j");
   const job = {
@@ -334,6 +357,7 @@ async function send(payload) {
     status: "running",
     conversationId: conversation.id,
     modelKey,
+    backend: usesAgent ? "agent" : "complete",
     thinkingLevel,
     includeSession,
     sessionId: context.sessionId,
@@ -350,7 +374,7 @@ async function send(payload) {
     }
   }
   void runComplete(job);
-  return { jobId, snapshot: projectSnapshot(context.projectKey), settings: await readSettings() };
+  return { jobId, backend: job.backend, snapshot: projectSnapshot(context.projectKey), settings: await readSettings() };
 }
 
 function poll(payload) {
@@ -415,6 +439,16 @@ async function onRendererCall(method, args = {}) {
 }
 
 async function onPanelInvoke(channel, payload = {}) {
+  if (channel.startsWith("chat.attachment.")) {
+    const action = channel.slice("chat.attachment.".length);
+    if (!["begin", "chunk", "finish", "discard"].includes(action)) throw errorWith("UNSUPPORTED", "Unsupported attachment operation");
+    // An opaque upload token remains valid for cleanup after navigation, never for sending.
+    if (action === "discard") return attachmentSupport.discard({ projectKey: payload.projectKey, conversationId: payload.conversationId }, payload);
+    const context = await currentContext();
+    assertContext(payload, context);
+    if (projectStore(context).active().id !== payload.conversationId) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
+    return attachmentSupport[action]({ projectKey: context.projectKey, conversationId: payload.conversationId }, payload);
+  }
   switch (channel) {
     case "chat.bootstrap":
       return bootstrap();
@@ -462,6 +496,11 @@ async function onPanelInvoke(channel, payload = {}) {
 async function onLoad() {
   const dataPath = await pi.plugin.getDataPath();
   dataFile = path.join(dataPath, "conversations.json");
+  attachmentSupport = createAttachments({
+    io: fs, pathLib: path, dataPath,
+    invoke: input => pi.desktop.invoke(input),
+    getMainId: async () => (await pi.session.getActive())?.sessionId || null,
+  });
   historyReady = false;
   projects.clear();
   // A permanent entry; loading an existing general bucket restores its history in place.
@@ -481,6 +520,7 @@ async function onLoad() {
 
 async function onUnload() {
   if (pendingDraft) settleDraft(pendingDraft, errorWith("PLUGIN_UNLOADED", "Plugin unloaded before draft return"));
+  await attachmentSupport?.close();
   jobs.clear();
   try {
     await persist();

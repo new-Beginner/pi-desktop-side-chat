@@ -194,6 +194,15 @@
       .markdown th, .markdown td { border: 1px solid var(--line); padding: 5px 8px; }
       .markdown hr { border: 0; border-top: 1px solid var(--line); }
       .markdown .math-display { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; margin: 0.6em 0; }
+      .box:has(#attachBtn) { position: relative; }
+      .box:has(#attachBtn) textarea { padding-right: 30px; }
+      #attachBtn { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; }
+      #attachBtn svg { width: 16px; height: 16px; }
+      .attachment-list:not([hidden]) { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+      .attachment-chip { display: flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; padding: 1px 5px; border: 1px solid var(--line); border-radius: 6px; font-size: 11px; }
+      .attachment-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .attachment-chip > button { flex: none; border: 0; padding: 0 3px; color: var(--muted); background: transparent; }
+      .message-attachments { display: grid; gap: 4px; margin-top: 5px; font-size: 11px; white-space: normal; }
       .msg.user {
         align-self: flex-end;
         max-width: 92%;
@@ -336,6 +345,9 @@
     <form class="composer" id="form">
       <div class="box">
         <textarea id="input" rows="2"></textarea>
+        <input id="attachmentInput" type="file" multiple hidden />
+        <button id="attachBtn" type="button" data-i18n-title="addAttachments" data-i18n-label="addAttachments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9"/></svg></button>
+        <div id="attachmentList" class="attachment-list" aria-live="polite" hidden></div>
       </div>
       <div class="composer-footer" data-model-compact="false">
         <button class="context-toggle" id="ctxBtn" type="button" role="switch" aria-checked="false" data-i18n-title="includeSession" data-i18n-label="includeSession">
@@ -380,6 +392,7 @@
     <script src="./vendor/katex.min.js"></script>
     <script src="./markdown.js"></script>
     <script src="./appearance.js"></script>
+    <script src="./attachments.js"></script>
     <script>
       const COPY = {
         en: {
@@ -390,6 +403,11 @@
           emptyHint: "Independent from the main session. Attach context if needed, or return a reply to the main input without sending.",
           placeholder: "Ask anything…",
           send: "Send",
+          addAttachments: "Add images or files (read-only Q&A)",
+          removeAttachment: "Remove attachment",
+          attachmentLimit: "Up to 8 files, 10 MB each; conversation attachment cache limit: 20 MB.",
+          attachmentsReload: "Reload this plugin and grant agent.extension to enable read-only attachments.",
+          attachmentsUnconfirmed: "The read-only attachment extension did not confirm startup. Check the host's trusted extension diagnostics.",
           includeSession: "Use session",
           insert: "Return reply to main input (do not send)",
           copy: "Copy",
@@ -430,6 +448,11 @@
           emptyHint: "和主会话互不干扰。可附带当前会话背景，或把回复放回主输入框，确认后再发送。",
           placeholder: "随便问…",
           send: "发送",
+          addAttachments: "添加图片或文件（只读问答）",
+          removeAttachment: "移除附件",
+          attachmentLimit: "每次最多8个文件，单文件10 MB；每个侧聊的附件缓存最多20 MB。",
+          attachmentsReload: "请重新加载插件并授权 agent.extension，以启用只读附件问答。",
+          attachmentsUnconfirmed: "附件只读扩展未确认启动，请查看宿主的可信扩展诊断。",
           includeSession: "带上会话",
           insert: "放回主输入框（不发送）",
           copy: "复制",
@@ -477,6 +500,11 @@
         pendingProjectKey: "",
         jobId: ""
       };
+      const attachmentInput = window.SideChatAttachments.create({
+        invoke, scope: () => ({ ...scope(), conversationId: activeConv().id }),
+        ready: () => !state.pending && Boolean(state.context) && !state.contextError && isCurrentHistory(),
+        t, hint,
+      });
 
       function t(key) {
         const table = COPY[state.locale] || COPY.en;
@@ -769,6 +797,7 @@
           content.appendChild(window.SideChatMarkdown.render(message.content));
           node.appendChild(content);
         } else node.textContent = message.error ? formatError(message.content) : message.content;
+        if (message.attachments?.length) node.appendChild(window.SideChatAttachments.renderMessage(message.attachments));
         if (message.role === "assistant" && !message.error) {
           const actions = document.createElement("div");
           actions.className = "msg-actions";
@@ -784,6 +813,9 @@
 
       function formatError(content) {
         if (content === "RATE_LIMITED") return t("rateLimited");
+        if (String(content).includes("ATTACHMENTS_GUARD_UNCONFIRMED") || String(content).includes("Side Chat read-only extension did not confirm startup")) return t("attachmentsUnconfirmed");
+        if (String(content).includes("agent.extension")) return t("attachmentsReload");
+        if (String(content).includes("10 MB") || String(content).includes("20 MB")) return t("attachmentLimit");
         if (String(content).includes("Session changed") || content === "STALE_CONTEXT") return t("sessionChanged");
         if (String(content).includes("Draft bridge") || String(content).includes("no composer")) return t("draftUnavailable");
         if (String(content).includes("main draft changed")) return t("draftStale");
@@ -829,6 +861,7 @@
       function renderAll() {
         applyCopy();
         renderSelects();
+        attachmentInput.sync();
         renderMessages();
         renderConvs();
       }
@@ -853,8 +886,8 @@
         state.settings = result.settings;
       }
 
-      async function waitJob(jobId) {
-        for (let i = 0; i < 240; i += 1) {
+      async function waitJob(jobId, backend) {
+        for (let i = 0; i < (backend === "agent" ? 480 : 240); i += 1) {
           const result = await invoke("chat.poll", { jobId });
           if (result.status === "running" || result.status === "missing" && i < 3) {
             await new Promise((resolve) => setTimeout(resolve, 400));
@@ -868,8 +901,8 @@
       $("form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const text = $("input").value.trim();
-        if (!text || state.pending || !isCurrentHistory() || state.contextError) return;
-        const target = scope();
+        if ((!text && !attachmentInput.hasFiles()) || state.pending || !isCurrentHistory() || state.contextError) return;
+        const target = { ...scope(), conversationId: activeConv().id };
         const modelKey = $("modelSelect").value;
         const thinkingLevel = $("thinkSelect").value;
         state.pending = true;
@@ -881,16 +914,21 @@
             hint(t("sessionChanged"));
             return;
           }
+          const uploaded = await attachmentInput.upload(target);
           const result = await invoke("chat.send", {
             text, ...target, modelKey, thinkingLevel,
-            includeSession: state.settings.includeSession
+            includeSession: state.settings.includeSession,
+            ...(uploaded.length ? { attachments: uploaded } : {}),
           });
-          $("input").value = "";
+          if (scope().projectKey === target.projectKey && activeConv().id === target.conversationId) {
+            $("input").value = "";
+            attachmentInput.clear(target);
+          }
           if (state.snapshot.projectKey === result.snapshot.projectKey) state.snapshot = result.snapshot;
           state.settings = result.settings || state.settings;
           state.jobId = result.jobId;
           renderAll();
-          const done = await waitJob(result.jobId);
+          const done = await waitJob(result.jobId, result.backend);
           if (done.snapshot?.projectKey === state.snapshot.projectKey) {
             state.snapshot = done.snapshot;
             if (done.status === "error") hint(formatError(done.error || done.code));

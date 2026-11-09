@@ -96,6 +96,7 @@ function createStore() {
                       content: String(message.content ?? ""),
                       createdAt: String(message.createdAt ?? now()),
                       error: message.error === true,
+                      ...(Array.isArray(message.attachments) && message.attachments.length ? { attachments: message.attachments.filter(a => a && typeof a.id === "string").map(a => ({ id: a.id, name: String(a.name || "").slice(0, 255), size: Number(a.size) || 0, kind: a.kind === "image" ? "image" : "file", mimeType: String(a.mimeType || "") })) } : {}),
                     }))
                 : [],
             }))
@@ -130,17 +131,18 @@ function createStore() {
       return this.snapshot();
     },
 
-    addUserMessage(text) {
+    addUserMessage(text, attachments = []) {
       const conversation = ensureActive();
       conversation.messages.push({
         id: nid("m"),
         role: "user",
         content: String(text),
+        ...(attachments.length ? { attachments: clone(attachments) } : {}),
         createdAt: now(),
         error: false,
       });
       conversation.updatedAt = now();
-      if (!conversation.title) conversation.title = titleFrom(text);
+      if (!conversation.title) conversation.title = titleFrom(text || attachments[0]?.name);
       trim();
       return clone(conversation);
     },

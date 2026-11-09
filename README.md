@@ -3,14 +3,14 @@
 PI-Desktop plugin: a chat docked in the right work panel.
 
 - Independent, project-scoped multi-turn history (stored in the plugin private data directory)
-- Completions go through the host (`agent.complete`) using models you already signed in
+- Ordinary text keeps host agent.complete; attachment conversations use independent read-only host Agent sessions, without exposing credentials
 - Automatically follow the selected host session; optionally attach its transcript
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.9 targets PI-Desktop 0.21.1 builds (including prereleases) with the official selected-session and Renderer draft APIs.
+Version 0.1.12 keeps the declared PI-Desktop >=0.21.1-0 requirement. Attachment startup and the wrapped status response are regression-tested against the installed 0.22.0 Runner/sidecar without model calls; this is not an end-to-end model test.
 
-0.1.9 maps the sidebar palette to host `--ds-*` tokens, preserves default colours and applies live theme CSS updates. Chat/history/model behavior is unchanged. Theme regression: `node tests/theme-follow.cjs`.
+Select/remove/drop images and files, including attachment-only messages: up to 8 per send, 10 MB per file and a 20 MB private cache per conversation. Reload and explicitly grant agent.extension when first adding that permission. Version 0.1.12 adds no permissions, preserves the versioned guard introduced in 0.1.11 and correctly unwraps Agent status responses. Read/Glob/Grep only, no writes, shell or session controls. Keep optional main-session context and draft-only return. Image understanding depends on a vision-capable model; binary document parsing is not guaranteed. See docs/attachments-0.1.10.zh-CN.md for prerequisites, repairs and acceptance steps.
 
 ## Install
 

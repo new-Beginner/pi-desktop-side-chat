@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "id": "com.vastsa.side-chat",
   "name": "Side Chat",
-  "version": "0.1.9",
+  "version": "0.1.12",
   "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
   "i18n": {
     "en": {
       "name": "Side Chat",
       "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
-      "safetyNotes": "Host-owned model completions keep API keys private. desktop.control reads session context. renderer.extension uses the declared composer draft actions to insert a reply into the main input, never send it. Local project history and host-gated Markdown links only."
+      "safetyNotes": "Host-owned models keep API keys private. Attachments are copied from user-selected File contents into bounded plugin-private caches and sent to separate Plan-mode sessions. agent.extension limits those sessions to read tools; reload and explicit approval are required. Main-session access remains optional context reading and draft-only return."
     },
     "zh-CN": {
       "name": "侧边聊天",
       "description": "按项目保存历史的侧边聊天：自动跟随当前会话，可将回复放回主输入框，不自动发送。",
-      "safetyNotes": "通过宿主模型补全，不接触 API 密钥。desktop.control 读取会话上下文；renderer.extension 仅通过声明的草稿接口将回复插入主输入框，不自动发送。历史保存在插件私有目录，外链经宿主授权打开。"
+      "safetyNotes": "通过宿主模型调用，不接触密钥。用户选择的附件内容保存在有上限的插件私有缓存，由独立 Plan 会话只读问答；agent.extension 限制该会话工具，需重载并明确授权。主会话仅可选读取上下文及主动回填草稿，不自动发送。"
     }
   },
   "author": "VastSa",
@@ -25,8 +25,8 @@
   "rendererActions": ["plugin.call", "composer.readDraft", "composer.insertText"],
   "rendererCallMethods": ["takeDraft", "finishDraft"],
   "categories": ["productivity"],
-  "changelog": "Release 0.1.9: follow host --ds-* theme colours and live updates, preserve light/dark fallbacks, and leave chat, history and model configuration unchanged.",
-  "safetyNotes": "Host-owned model completions and private per-project history. The trusted renderer uses declared draft actions to insert replies into the main input without sending. Markdown links use shell.openExternal. No plugin-owned network or API key access.",
+  "changelog": "Release 0.1.12: correctly unwrap the official Agent status response, reject malformed status data and preserve strict side-session identity checks. No new permissions.",
+  "safetyNotes": "User-selected attachment bytes are stored in plugin-private per-conversation caches. Separate Plan sessions and an explicitly granted Agent extension restrict attachment Q&A to read tools. This is not an OS sandbox. No provider credentials, automatic main-session sending or main-composer attachment access.",
   "ui": {
     "panel": "renderer/index.html",
     "width": 420,
@@ -37,6 +37,7 @@
     }
   },
   "contributes": {
+    "agentExtensions": ["agent/attachment-guard-0.1.11.js"],
     "views": [
       {
         "id": "chat",
@@ -97,7 +98,8 @@
     "desktop.control",
     "clipboard.write",
     "shell.openExternal",
-    "renderer.extension"
+    "renderer.extension",
+    "agent.extension"
   ],
   "engines": {
     "piDesktop": ">=0.21.1-0"

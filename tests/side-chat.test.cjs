@@ -14,6 +14,7 @@ function host(initialFile, behavior = {}) {
   let resolveCompletion;
   let delayed = false;
   const completions = [], operations = [];
+  const sideSessions = new Map();
   const fakeFs = {
     readFile: async (p) => { if (!files.has(p)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(p); },
     mkdir: async () => {},
@@ -22,6 +23,8 @@ function host(initialFile, behavior = {}) {
       if (options?.flag === "wx" && files.has(p)) throw Object.assign(new Error("exists"), { code: "EEXIST" });
       files.set(p, text);
     },
+    appendFile: async (p, bytes) => { files.set(p, Buffer.concat([Buffer.from(files.get(p) || ""), bytes])); },
+    unlink: async p => { if (!files.delete(p)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
     rename: async (a, b) => { files.set(b, files.get(a)); files.delete(a); },
   };
   const pi = {
@@ -37,8 +40,24 @@ function host(initialFile, behavior = {}) {
     } },
     session: { getActive: async () => active },
     clipboard: { writeText: async () => {} },
-    desktop: { invoke: async (p) => {
+    desktop: { listOperations: async () => ["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"].map(id => ({ id })), invoke: async (p) => {
       operations.push(p);
+      if (behavior.attachments) {
+        const input = p.args[0];
+        if (p.operation === "session/create") {
+          const session = { ...input, id: `side-${sideSessions.size + 1}`, messages: [] }; sideSessions.set(session.id, session); return { session };
+        }
+        if (p.operation === "agent/prompt") {
+          const session = sideSessions.get(input.sessionId);
+          const policy = JSON.parse(files.get(path.posix.join(session.projectPath, ".side-chat-policy.json")));
+          files.set(path.posix.join(session.projectPath, ".side-chat-ready.json"), JSON.stringify({ sessionId: session.id, nonce: policy.nonce }));
+          session.messages.push({ role: "user", content: input.content }, { role: "assistant", content: "attachment backend reply" });
+          return { accepted: true, turnId: "side-turn" };
+        }
+        if (p.operation === "agent/getStatus") return { status: { sessionId: input, isRunning: false, pendingToolConfirmations: 0 } };
+        if (p.operation === "agent/abort") return { ok: true };
+        if (p.operation === "session/get" && sideSessions.has(input.id)) return { session: sideSessions.get(input.id) };
+      }
       if (p.operation === "session/list") return [];
       if (p.operation === "session/get") return { id: p.args[0].id, messages: [{ role: "user", content: `context:${p.args[0].id}` }] };
       return { ok: true };
@@ -338,4 +357,46 @@ test("sharing standalone history does not authorize stale sends or draft returns
   h.switchTo("standalone-2", null);
   for (const channel of ["chat.send", "chat.insert"]) await assert.rejects(h.api.onPanelInvoke(channel, { text: "stale", projectKey: first.context.projectKey, sessionId: first.context.sessionId }), { code: "STALE_CONTEXT" });
   assert.equal(h.completions.length, 0);
+});
+
+async function attachThroughPanel(h, target, name = "note.txt", data = Buffer.from("actual selected text"), mimeType = "text/plain") {
+  const { id } = await h.api.onPanelInvoke("chat.attachment.begin", { ...target, name, size: data.length, mimeType });
+  await h.api.onPanelInvoke("chat.attachment.chunk", { ...target, id, offset: 0, data: data.toString("base64") });
+  return h.api.onPanelInvoke("chat.attachment.finish", { ...target, id });
+}
+test("panel upload, persistence and send reach an independent read-only attachment session", async () => {
+  const h = host(null, { attachments: true }), booted = await boot(h);
+  const target = { ...booted.context, conversationId: booted.snapshot.activeId };
+  const file = await attachThroughPanel(h, target);
+  const sent = await h.api.onPanelInvoke("chat.send", { ...target, text: "", attachments: [file], includeSession: false });
+  const done = await settle(h, sent.jobId);
+  assert.equal(sent.backend, "agent"); assert.equal(done.status, "done"); assert.equal(done.text, "attachment backend reply");
+  assert.equal(h.completions.length, 0);
+  const prompt = h.operations.find(op => op.operation === "agent/prompt").args[0];
+  assert.equal(prompt.sessionId, "side-1"); assert.equal(prompt.attachments[0].name, "note.txt");
+  assert.equal(h.operations.find(op => op.operation === "session/create").args[0].mode, "plan");
+  assert.ok(!h.operations.some(op => op.operation === "session/get" && op.args[0].id === "a1"));
+  const active = done.snapshot.conversations.find(c => c.id === target.conversationId);
+  assert.equal(active.messages[0].attachments[0].id, file.id);
+  const again = await h.api.onPanelInvoke("chat.send", { ...target, text: "follow up", includeSession: false }); await settle(h, again.jobId);
+  assert.equal(h.operations.filter(op => op.operation === "session/create").length, 1);
+  assert.match(h.files.get("/private/conversations.json"), /note\.txt/);
+  await h.api.onUnload();
+});
+test("attachment upload rejects stale conversations and supports old-scope cleanup after switching projects", async () => {
+  const h = host(), booted = await boot(h), target = { ...booted.context, conversationId: booted.snapshot.activeId };
+  await assert.rejects(h.api.onPanelInvoke("chat.attachment.begin", { ...target, conversationId: "stale", name: "a.txt", size: 1 }), /conversation changed/i);
+  const { id } = await h.api.onPanelInvoke("chat.attachment.begin", { ...target, name: "a.txt", size: 1 });
+  h.switchTo("b1", "D:/projects/B", "project-b");
+  await assert.rejects(h.api.onPanelInvoke("chat.attachment.chunk", { ...target, id, offset: 0, data: "eA==" }), /Session changed/);
+  const removed = await h.api.onPanelInvoke("chat.attachment.discard", { ...target, id }); assert.equal(removed.ok, true);
+  await h.api.onUnload();
+});
+test("attachment metadata survives store reload without changing legacy text messages", () => {
+  const { createStore } = require("../store.js"), store = createStore();
+  store.addUserMessage("plain"); const before = store.active().messages[0];
+  const file = { id: "id", name: "note.txt", size: 3, mimeType: "text/plain", kind: "file" };
+  store.addUserMessage("", [file]); const restored = createStore(); restored.load(store.snapshot());
+  assert.deepEqual(restored.active().messages[0], { ...before, error: false });
+  assert.deepEqual(restored.active().messages[1].attachments, [file]);
 });
