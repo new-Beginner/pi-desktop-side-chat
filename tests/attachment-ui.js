@@ -1,8 +1,8 @@
 "use strict";
 window.runAttachmentChecks = async function () {
   const win = document.getElementById("app").contentWindow, doc = win.document, $ = id => doc.getElementById(id);
-  const original = win.pluginBridge.invoke, history = JSON.stringify(win.__mock.snapshots), mainDraft = document.getElementById("mainDraft").value;
-  const rows = [], uploads = new Map(), sends = []; let next = 0, rejectUpload = false, pickerClicks = 0;
+  const original = win.pluginBridge.invoke, originalGetPath = win.pluginBridge.getDroppedFilePath, history = JSON.stringify(win.__mock.snapshots), mainDraft = document.getElementById("mainDraft").value;
+  const rows = [], uploads = new Map(), sends = [], references = []; let next = 0, rejectUpload = false, pickerClicks = 0;
   const assert = (ok, message) => { if (!ok) throw Error(message); };
   const wait = async fn => { for (let i = 0; i < 150; i++) { if (fn()) return; await new Promise(r => setTimeout(r, 20)); } throw Error("Attachment UI timed out"); };
   const check = async (name, fn) => { try { await fn(); rows.push({ name, passed: true }); } catch (error) { rows.push({ name, passed: false, error: error.message }); } };
@@ -21,6 +21,7 @@ window.runAttachmentChecks = async function () {
     $("input").dispatchEvent(event); return event;
   };
   win.pluginBridge.invoke = async (channel, payload) => {
+    if (channel === "chat.attachment.reference") { references.push(payload); return { id: "source-" + ++next, name: payload.path.split(/[\\/]/).at(-1), size: 3, kind: "file", mimeType: "text/plain" }; }
     if (channel === "chat.attachment.begin") {
       if (rejectUpload) throw Error("test upload failed");
       const id = "upload-" + ++next; uploads.set(id, { ...payload, chunks: [], received: 0 }); return { id };
@@ -128,10 +129,10 @@ window.runAttachmentChecks = async function () {
       assert(!event.defaultPrevented && $("attachmentList").hidden, "ordinary text treated as an attachment");
       assert(sends.length === sent && uploads.size === uploaded && !$("attachmentList").querySelector("img"), "paste imported an unselected path or HTML image");
     });
-    await check("粘贴继续遵守8个附件与单文件10MB限制", () => {
-      removeAll(); paste(Array.from({ length: 9 }, (_, i) => new win.File(["x"], `paste-${i}.txt`, { type: "text/plain" })));
-      assert(doc.querySelectorAll(".attachment-chip").length === 8 && $("hint").textContent === win.t("attachmentLimit"), "paste bypassed attachment count limit"); removeAll();
-      paste([new win.File([new Uint8Array(10_000_001)], "too-large.bin")]);
+    await check("粘贴允许10个附件、单文件500MB，拒绝第11个或超限文件", () => {
+      removeAll(); paste(Array.from({ length: 11 }, (_, i) => new win.File(["x"], `paste-${i}.txt`, { type: "text/plain" })));
+      assert(doc.querySelectorAll(".attachment-chip").length === 10 && $("hint").textContent === win.t("attachmentLimit"), "paste bypassed attachment count limit"); removeAll();
+      const oversized = new win.File(["x"], "too-large.bin"); Object.defineProperty(oversized, "size", { value: 500_000_001 }); paste([oversized]);
       assert($("attachmentList").hidden && $("hint").textContent === win.t("attachmentLimit"), "paste bypassed file size limit");
     });
     await check("忙碌及跨项目只读时忽略粘贴附件，主草稿保持不变", async () => {
@@ -143,8 +144,34 @@ window.runAttachmentChecks = async function () {
       finally { await win.showHistory("chat.history", { projectKey: current }); }
       assert(document.getElementById("mainDraft").value === mainDraft && pickerClicks === 0, "paste changed main draft or used picker");
     });
+    await check("真实源文件发送只登记路径、不上传原件，仍保留现有附件显示", async () => {
+      removeAll(); const source = new win.File(["ref"], "source.txt", { type: "text/plain" }), sent = sends.length, uploaded = uploads.size, registered = references.length;
+      win.pluginBridge.getDroppedFilePath = file => file === source ? "E:/my files/source.txt" : null;
+      Object.defineProperty(source, "slice", { value() { throw Error("source bytes must not be uploaded"); } });
+      select([source]); assert(references.length === registered, "selection registered before send");
+      $("input").value = "读取源文件"; $("form").requestSubmit(); await wait(() => sends.length === sent + 1 && !$("sendBtn").disabled);
+      assert(uploads.size === uploaded && references.length === registered + 1, "source used upload or failed to register");
+      assert(references.at(-1).path === "E:/my files/source.txt" && sends.at(-1).attachments.length === 1, "source reference lost");
+    });
+    await check("源路径与无路径文件可以混合发送，只有后者上传字节", async () => {
+      removeAll(); const source = new win.File(["ref"], "source.txt"), sent = sends.length, uploaded = uploads.size;
+      win.pluginBridge.getDroppedFilePath = item => item === source ? "E:/source.txt" : null;
+      select([source, file]); $("input").value = "mixed"; $("form").requestSubmit(); await wait(() => sends.length === sent + 1 && !$("sendBtn").disabled);
+      assert(uploads.size === uploaded + 1 && sends.at(-1).attachments.length === 2, "mixed source/upload routing changed");
+    });
+    await check("源引用不占20MB原件缓存预算，单文件与数量上限仍保持", () => {
+      removeAll(); const sources = Array.from({ length: 3 }, (_, i) => new win.File([new Uint8Array(8_000_000)], `source-${i}.txt`));
+      win.pluginBridge.getDroppedFilePath = item => sources.includes(item) ? "E:/" + item.name : null;
+      select(sources); assert(doc.querySelectorAll(".attachment-chip").length === 3, "source sizes counted as cached originals"); removeAll();
+    });
+    await check("无源路径文件允许500MB边界，不再受20MB累计队列门槛拦截", () => {
+      removeAll(); win.pluginBridge.getDroppedFilePath = () => null;
+      const large = Array.from({ length: 3 }, (_, i) => { const file = new win.File(["x"], `large-${i}.bin`); Object.defineProperty(file, "size", { value: 500_000_000 }); return file; });
+      select(large); assert(doc.querySelectorAll(".attachment-chip").length === 3, "500MB boundary or old 20MB queue check rejected files"); removeAll();
+    });
   } finally {
     rejectUpload = false; removeAll(); win.pluginBridge.invoke = original;
+    win.pluginBridge.getDroppedFilePath = originalGetPath;
     $("attachmentInput").removeEventListener("click", trackPicker);
     const saved = JSON.parse(history); for (const key of Object.keys(win.__mock.snapshots)) delete win.__mock.snapshots[key]; Object.assign(win.__mock.snapshots, saved);
     $("input").value = ""; await win.refreshContext(); win.renderAll(); win.hint("");

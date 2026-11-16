@@ -2,7 +2,7 @@
 // File content preparation only; no model, network, shell, Office or MCP calls.
 const path = require("node:path"), zlib = require("node:zlib");
 const readers = require("./renderer/vendor/attachment-readers.cjs");
-const LIMITS = Object.freeze({ input: 10_000_000, part: 8 * 1024 * 1024, expanded: 32 * 1024 * 1024, text: 256_000, documents: 384_000, pixels: 16_000_000, outputs: 8 });
+const LIMITS = Object.freeze({ input: 500_000_000, part: 8 * 1024 * 1024, expanded: 32 * 1024 * 1024, text: 256_000, documents: 384_000, pixels: 16_000_000, outputs: 10 });
 const fail = (code, message) => Object.assign(new Error(message), { code });
 const imageExtensions = new Map(Object.entries({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff" }));
 const officeExtensions = new Map(Object.entries({ doc: "doc", docx: "docx", xls: "xlsx", xlsx: "xlsx", ppt: "ppt", pptx: "pptx" }));
@@ -122,7 +122,7 @@ function tiffImages(source, bytes) {
     const data = readers.TIFF.toRGBA8(frame);
     if (data.length !== width * height * 4) throw fail("ATTACHMENT_PARSE_FAILED", "TIFF did not decode to a complete image");
     const png = readers.PNG.sync.write({ width, height, data: Buffer.from(data) });
-    if (png.length > LIMITS.input) throw fail("ATTACHMENT_CONTENT_LIMIT", "Converted TIFF page exceeds 10 MB");
+    if (png.length > LIMITS.input) throw fail("ATTACHMENT_CONTENT_LIMIT", "Converted TIFF page exceeds 500 MB");
     result.push({ ...source, name: `${source.name.slice(0, 220)} [page ${index + 1}].png`, kind: "image", mimeType: "image/png", size: png.length, bytes: png, derived: `page-${index + 1}.png` });
   }
   if (result.length !== pages) throw fail("ATTACHMENT_PARSE_FAILED", "Not every TIFF page was decoded");
@@ -133,7 +133,7 @@ async function prepareContent(sources, readFile) {
   for (const source of sources) {
     try {
       const bytes = Buffer.from(await readFile(source.path));
-      if (bytes.length > LIMITS.input) throw fail("ATTACHMENT_CONTENT_LIMIT", "Attachment exceeds 10 MB");
+      if (bytes.length > LIMITS.input) throw fail("ATTACHMENT_CONTENT_LIMIT", "Attachment exceeds 500 MB");
       const mime = imageMime(source.name, source.mimeType), ext = extension(source.name);
       if (mime) {
         validateImage(mime, bytes);
@@ -153,7 +153,7 @@ async function prepareContent(sources, readFile) {
         documents.push({ id: source.id, name: source.name, format: office || "text", encoding: decoded.encoding, content: decoded.content });
         files.push({ ...source, kind: "file", mimeType: "text/plain", size: utf8.length, ...(!utf8.equals(bytes) ? { bytes: utf8, derived: "content.txt" } : {}) });
       }
-      if (files.length > LIMITS.outputs) throw fail("ATTACHMENT_CONTENT_LIMIT", "Converted files/pages exceed 8 attachments; split the input");
+      if (files.length > LIMITS.outputs) throw fail("ATTACHMENT_CONTENT_LIMIT", "Converted files/pages exceed 10 attachments; split the input");
       if (Buffer.byteLength(JSON.stringify(documents), "utf8") > LIMITS.documents) throw fail("ATTACHMENT_CONTENT_LIMIT", "Combined extracted text exceeds 384000 bytes; split the input");
     } catch (error) {
       if (error.code?.startsWith("ATTACHMENT_") || error.code === "INVALID_ATTACHMENT") throw error;

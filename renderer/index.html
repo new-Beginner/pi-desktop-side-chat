@@ -405,9 +405,10 @@
           send: "Send",
           addAttachments: "Add images or files (read-only Q&A)",
           removeAttachment: "Remove attachment",
-          attachmentLimit: "Up to 8 files, 10 MB each; conversation attachment cache limit: 20 MB.",
-          attachmentsReload: "Reload this plugin and grant agent.extension to enable read-only attachments.",
-          attachmentsUnconfirmed: "The read-only attachment extension did not confirm startup. Check the host's trusted extension diagnostics.",
+          attachmentLimit: "Up to 10 files, 500 MB each. Source originals are not copied; no cumulative cache-size limit.",
+          attachmentsReload: "Reload this plugin and grant agent.extension to enable read-only Side Chat.",
+          attachmentsUnconfirmed: "The read-only Side Chat extension did not confirm startup. Check the host's trusted extension diagnostics.",
+          sourceReadPermission: "Office/TIFF source parsing needs fs.read approval after reloading this plugin. When prompted, choose the source file's containing directory.",
           includeSession: "Use session",
           insert: "Return reply to main input (do not send)",
           copy: "Copy",
@@ -450,9 +451,10 @@
           send: "发送",
           addAttachments: "添加图片或文件（只读问答）",
           removeAttachment: "移除附件",
-          attachmentLimit: "每次最多8个文件，单文件10 MB；每个侧聊的附件缓存最多20 MB。",
-          attachmentsReload: "请重新加载插件并授权 agent.extension，以启用只读附件问答。",
-          attachmentsUnconfirmed: "附件只读扩展未确认启动，请查看宿主的可信扩展诊断。",
+          attachmentLimit: "每次最多10个文件，单文件500 MB；源引用不复制原件，不再限制累计缓存大小。",
+          attachmentsReload: "请重新加载插件并授权 agent.extension，以启用只读侧聊。",
+          attachmentsUnconfirmed: "侧聊只读扩展未确认启动，请查看宿主的可信扩展诊断。",
+          sourceReadPermission: "解析 Office/TIFF 源文件需重新加载插件并授权 fs.read；弹出目录选择时，请选择源文件所在目录。",
           includeSession: "带上会话",
           insert: "放回主输入框（不发送）",
           copy: "复制",
@@ -822,7 +824,8 @@
         if (content === "RATE_LIMITED") return t("rateLimited");
         if (String(content).includes("ATTACHMENTS_GUARD_UNCONFIRMED") || String(content).includes("Side Chat read-only extension did not confirm startup")) return t("attachmentsUnconfirmed");
         if (String(content).includes("agent.extension")) return t("attachmentsReload");
-        if (String(content).includes("10 MB") || String(content).includes("20 MB")) return t("attachmentLimit");
+        if (String(content).includes("fs.read") || String(content).includes("SOURCE_PERMISSION_REQUIRED") || String(content).includes("containing directory to authorize")) return t("sourceReadPermission");
+        if (String(content).includes("500 MB") || String(content).includes("At most ten attachments")) return t("attachmentLimit");
         if (String(content).includes("Session changed") || content === "STALE_CONTEXT") return t("sessionChanged");
         if (String(content).includes("Draft bridge") || String(content).includes("no composer")) return t("draftUnavailable");
         if (String(content).includes("main draft changed")) return t("draftStale");

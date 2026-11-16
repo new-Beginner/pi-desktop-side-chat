@@ -37,7 +37,7 @@ async function setup(t, behavior = {}) {
     if (input.operation === "agent/abort") return { ok: true };
     throw Error("Unexpected operation " + input.operation);
   };
-  const manager = createAttachments({ io: fs, dataPath: root, invoke, getMainId: async () => "main-a", now: () => clock, sleep: async ms => { clock += ms; }, timeout: 1000, guardTimeout: 100, idleGrace: 200 });
+  const manager = createAttachments({ io: behavior.io || fs, readSource: behavior.readSource, dataPath: root, invoke, getMainId: async () => "main-a", now: () => clock, sleep: async ms => { clock += ms; }, timeout: 1000, guardTimeout: 100, idleGrace: 200 });
   return { manager, calls, sessions, root };
 }
 async function upload(manager, name = "note.txt", bytes = Buffer.from("unique text: side-file"), mimeType = "text/plain", target = scope) {
@@ -59,7 +59,7 @@ test("PNG and text bytes are staged privately and paths are not returned to the 
 test("upload validation rejects sensitive names, oversize data, wrong offsets and forged IDs", async t => {
   const { manager } = await setup(t);
   await assert.rejects(manager.begin(scope, { name: ".env", size: 2 }), /sensitive/i);
-  await assert.rejects(manager.begin(scope, { name: "huge", size: 10000001 }), /10 MB/);
+  await assert.rejects(manager.begin(scope, { name: "huge", size: 500_000_001 }), /500 MB/);
   const part = await manager.begin(scope, { name: "x.txt", size: 3 });
   await assert.rejects(manager.chunk(scope, { id: part.id, offset: 1, data: "YWJj" }), /offset/i);
   await assert.rejects(manager.chunk(scope, { id: part.id, offset: 0, data: "../bad" }), /base64/i);
@@ -289,4 +289,150 @@ test("installed sidecar status IPC response reaches the attachment reply path wi
   assert.deepEqual(statusReply, { status: { sessionId: "side-1", isRunning: false, pendingToolConfirmations: 0 } });
   const h = await setup(t, { statusReply });
   assert.equal(await h.manager.run(job([await upload(h.manager)]), ""), "read attachment content");
+});
+
+test("text-only turns bind the same read-only guard and reject write/control tools", async t => {
+  const h = await setup(t), request = job([]);
+  assert.equal(await h.manager.run(request, ""), "read attachment content");
+  assert.deepEqual(h.sessions.get(request.sideSessionId).activeTools, ["Read", "Glob", "Grep"]);
+  assert.deepEqual(h.calls.find(call => call.operation === "agent/prompt").args[0].attachments, []);
+  const record = h.sessions.get(request.sideSessionId), handlers = {};
+  const policy = JSON.parse(await fs.readFile(path.join(record.session.projectPath, POLICY_FILE), "utf8"));
+  guardFactory({ on: (name, fn) => { handlers[name] = fn; }, getAllTools: () => ["Read", "Write", "Edit", "Bash", "Task", "SessionTask"].map(name => ({ name })), setActiveTools: () => {} });
+  handlers.before_agent_start({ prompt: `${PREFIX}${policy.nonce}]]\nplain question`, systemPrompt: "base" }, { cwd: record.session.projectPath });
+  for (const toolName of ["Write", "Edit", "Bash", "Shell", "Task", "SessionTask", "ToolSearch"]) assert.equal(handlers.tool_call({ toolName, input: { path: "files/new.txt" } }, { cwd: record.session.projectPath }).block, true);
+  assert.equal((await fs.readdir(path.join(record.session.projectPath, "files"))).length, 0);
+});
+test("text-only turns without a guard acknowledgement fail and abort only the side turn", async t => {
+  const h = await setup(t, { noGuard: true }), request = job([]);
+  await assert.rejects(h.manager.run(request, ""), { code: "ATTACHMENTS_GUARD_UNCONFIRMED" });
+  const abort = h.calls.find(call => call.operation === "agent/abort").args[0];
+  assert.equal(abort.sessionId, request.sideSessionId); assert.notEqual(abort.sessionId, "main-a"); assert.ok(abort.turnId);
+});
+
+test("source references persist only metadata, reuse IDs and never consume the original cache quota", async t => {
+  const h = await setup(t), source = path.join(h.root, "source.txt");
+  await fs.writeFile(source, "SOURCE-ORIGINAL");
+  const file = await h.manager.reference(scope, { path: source });
+  assert.equal(file.path, undefined); assert.equal(file.name, "source.txt");
+  assert.equal((await h.manager.reference(scope, { path: source })).id, file.id);
+  const resolved = await h.manager.resolve(scope, [file]);
+  assert.equal(resolved[0].source, true); assert.equal(resolved[0].path, await fs.realpath(source));
+  const data = JSON.parse(await fs.readFile(path.join(path.dirname(path.dirname((await h.manager.resolve(scope, [await upload(h.manager)]))[0].path)), "catalog.json"), "utf8"));
+  assert.equal(data.sources.length, 1); assert.equal(data.files.length, 1); assert.ok(!JSON.stringify(data).includes("SOURCE-ORIGINAL"));
+  const reloaded = createAttachments({ io: fs, dataPath: h.root });
+  assert.equal((await reloaded.resolve(scope, [file]))[0].source, true);
+  await assert.rejects(h.manager.resolve({ ...scope, conversationId: "other" }, [file]), /attachment/i);
+  for (let i = 0; i < 3; i++) {
+    const large = path.join(h.root, `large-${i}.txt`); await fs.writeFile(large, Buffer.alloc(8_000_000));
+    await h.manager.reference(scope, { path: large });
+  }
+});
+test("native source references are quoted paths, not attachments or eagerly read/cached bytes", async t => {
+  const reads = [], io = new Proxy(fs, { get(target, key) { return key === "readFile" ? async (...args) => { reads.push(args[0]); return target.readFile(...args); } : target[key]; } });
+  const h = await setup(t, { io }), source = path.join(h.root, "source.txt"); await fs.writeFile(source, "DO-NOT-PRELOAD");
+  const file = await h.manager.reference(scope, { path: source });
+  const request = job([file]); await h.manager.run(request, "");
+  const prompt = h.calls.find(call => call.operation === "agent/prompt").args[0];
+  assert.deepEqual(prompt.attachments, []); assert.ok(prompt.content.includes(JSON.stringify(await fs.realpath(source))));
+  assert.ok(!prompt.content.includes("DO-NOT-PRELOAD")); assert.ok(!reads.includes(source));
+  const record = h.sessions.get(request.sideSessionId), policy = JSON.parse(await fs.readFile(path.join(record.session.projectPath, POLICY_FILE), "utf8"));
+  assert.equal(policy.sources.length, 1); assert.equal(policy.sources[0].realPath, await fs.realpath(source));
+  assert.deepEqual(await fs.readdir(path.join(record.session.projectPath, "files")), []);
+});
+test("source guard permits only registered regular files and leaves native host authorization intact", async t => {
+  const h = await setup(t), source = path.join(h.root, "source.txt"), neighbor = path.join(h.root, "neighbor.txt");
+  await fs.writeFile(source, "source"); await fs.writeFile(neighbor, "neighbor");
+  const file = await h.manager.reference(scope, { path: source }), request = job([file]); await h.manager.run(request, "");
+  const cwd = h.sessions.get(request.sideSessionId).session.projectPath, policy = JSON.parse(await fs.readFile(path.join(cwd, POLICY_FILE), "utf8")), handlers = {};
+  guardFactory({ on: (name, fn) => { handlers[name] = fn; }, getAllTools: () => ["Read", "Glob", "Grep", "Write", "Bash"].map(name => ({ name })), setActiveTools() {} });
+  handlers.before_agent_start({ prompt: `${PREFIX}${policy.nonce}]]\nread`, systemPrompt: "base" }, { cwd });
+  assert.equal(handlers.tool_call({ toolName: "Read", input: { path: source } }, { cwd }), undefined);
+  assert.equal(handlers.tool_call({ toolName: "Grep", input: { path: source, pattern: "source" } }, { cwd }), undefined);
+  for (const target of [neighbor, h.root]) assert.equal(handlers.tool_call({ toolName: "Read", input: { path: target } }, { cwd }).block, true);
+  for (const toolName of ["Write", "Edit", "Bash", "Task", "SessionTask", "ToolSearch"]) assert.equal(handlers.tool_call({ toolName, input: { path: source } }, { cwd }).block, true);
+  for (const input of [{ file_path: source, path: neighbor }, { path: source, directory: h.root }, { file_path: source, path: 1 }]) assert.equal(handlers.tool_call({ toolName: "Read", input }, { cwd }).block, true);
+  assert.equal(handlers.tool_call({ toolName: "Read", input: { file_path: source, path: source } }, { cwd }), undefined);
+  assert.ok(!h.calls.some(call => /permission/i.test(call.operation)));
+});
+test("missing, directory, relative, sensitive and retargeted source references fail explicitly", async t => {
+  const h = await setup(t);
+  for (const source of [h.root, path.join(h.root, "missing.txt"), "relative.txt"]) await assert.rejects(h.manager.reference(scope, { path: source }));
+  const secret = path.join(h.root, ".env"); await fs.writeFile(secret, "SECRET"); await assert.rejects(h.manager.reference(scope, { path: secret }), /sensitive/i);
+  const a = path.join(h.root, "a"), b = path.join(h.root, "b"), link = path.join(h.root, "link");
+  await fs.mkdir(a); await fs.mkdir(b); await fs.writeFile(path.join(a, "note.txt"), "a"); await fs.writeFile(path.join(b, "note.txt"), "b");
+  await fs.symlink(a, link, "junction");
+  const file = await h.manager.reference(scope, { path: path.join(link, "note.txt") });
+  await fs.unlink(link); await fs.symlink(b, link, "junction");
+  await assert.rejects(h.manager.resolve(scope, [file]), { code: "SOURCE_CHANGED" });
+});
+test("Office source conversion uses the authorized reader and never caches the original", async t => {
+  const reads = [], h = await setup(t, { readSource: async (source, check) => { await check(); reads.push(source.path); return fs.readFile(source.path); } });
+  const source = path.join(h.root, "source.docx"); await fs.copyFile(path.join(__dirname, "fixtures/content/sample.docx"), source);
+  const file = await h.manager.reference(scope, { path: source }), request = job([file]); await h.manager.run(request, "");
+  assert.deepEqual(reads, [await fs.realpath(source)]);
+  const prompt = h.calls.find(call => call.operation === "agent/prompt").args[0]; assert.match(prompt.content, /DOCX-SIDE-420/); assert.deepEqual(prompt.attachments, []);
+  assert.deepEqual(await fs.readdir(path.join(h.sessions.get(request.sideSessionId).session.projectPath, "files")), []);
+});
+test("source conversion fails closed without official reader authorization", async t => {
+  const h = await setup(t), source = path.join(h.root, "source.docx"); await fs.writeFile(source, "not authorized");
+  const file = await h.manager.reference(scope, { path: source });
+  await assert.rejects(h.manager.run(job([file]), ""), { code: "SOURCE_PERMISSION_REQUIRED" });
+  assert.ok(!h.calls.some(call => call.operation === "agent/prompt"));
+});
+
+test("TIFF source references cache only converted pages and share the existing output budget", async t => {
+  const h = await setup(t, { readSource: async source => fs.readFile(source.path) }), source = path.join(h.root, "source.tiff");
+  await fs.copyFile(path.join(__dirname, "fixtures/content/multipage.tiff"), source);
+  const image = await h.manager.reference(scope, { path: source }), request = job([image]); await h.manager.run(request, "");
+  const prompt = h.calls.find(call => call.operation === "agent/prompt").args[0]; assert.equal(prompt.attachments.length, 2);
+  const directory = path.join(h.sessions.get(request.sideSessionId).session.projectPath, "files");
+  const generated = await fs.readdir(directory); assert.equal(generated.length, 2); assert.ok(generated.every(name => name.startsWith("derived-v1-") && name.endsWith(".png")));
+  const natives = [];
+  for (let i = 0; i < 9; i++) { const file = path.join(h.root, `note-${i}.txt`); await fs.writeFile(file, "x"); natives.push(await h.manager.reference(scope, { path: file })); }
+  await assert.rejects(h.manager.run(job([...natives, image]), ""), { code: "ATTACHMENT_CONTENT_LIMIT" });
+});
+test("follow-up policies keep only sent source references and explicit re-submission reads current metadata", async t => {
+  const h = await setup(t), source = path.join(h.root, "note.txt"), staged = path.join(h.root, "not-sent.txt");
+  await fs.writeFile(source, "first"); await fs.writeFile(staged, "not sent");
+  const file = await h.manager.reference(scope, { path: source }); await h.manager.reference(scope, { path: staged });
+  const first = job([file]); await h.manager.run(first, "");
+  await fs.writeFile(source, "updated source");
+  assert.equal((await h.manager.resolve(scope, [file]))[0].size, Buffer.byteLength("updated source"));
+  const followup = job([], { messages: [...first.messages, { role: "assistant", content: "answer" }, { role: "user", content: "follow up" }] });
+  await h.manager.run(followup, "");
+  const policy = JSON.parse(await fs.readFile(path.join(h.sessions.get(first.sideSessionId).session.projectPath, POLICY_FILE), "utf8"));
+  assert.deepEqual(policy.sources, [{ path: source, realPath: await fs.realpath(source) }]);
+  assert.equal(h.calls.filter(call => call.operation === "session/create").length, 1);
+});
+
+test("ten 500 MB upload declarations pass without the old cumulative cache quota", async t => {
+  const h = await setup(t), uploads = [];
+  for (let i = 0; i < 10; i++) uploads.push(await h.manager.begin(scope, { name: `large-${i}.bin`, size: 500_000_000 }));
+  await assert.rejects(h.manager.begin(scope, { name: "eleventh.bin", size: 1 }), /unfinished/i);
+  await h.manager.discard(scope, uploads.pop());
+  await assert.rejects(h.manager.begin(scope, { name: "oversize.bin", size: 500_000_001 }), /500 MB/);
+  assert.equal(uploads.length, 9); await h.manager.run(job([]), ""); await h.manager.close();
+});
+test("500 MB source metadata reaches the exact-file guard without loading or copying bytes", async t => {
+  let source = "", size = 500_000_000;
+  const io = new Proxy(fs, { get(target, key) {
+    if (key === "stat") return async file => { const stat = await target.stat(file); if (file === source) stat.size = size; return stat; };
+    if (key === "readFile") return async (file, ...args) => { assert.notEqual(file, source, "source content was eagerly loaded"); return target.readFile(file, ...args); };
+    return target[key];
+  } });
+  const h = await setup(t, { io }); source = path.join(h.root, "large.txt"); await fs.writeFile(source, "small metadata fixture"); source = await fs.realpath(source);
+  const file = await h.manager.reference(scope, { path: source }); assert.equal(file.size, 500_000_000);
+  const request = job([file]); await h.manager.run(request, "");
+  const cwd = h.sessions.get(request.sideSessionId).session.projectPath, policy = JSON.parse(await fs.readFile(path.join(cwd, POLICY_FILE), "utf8")), handlers = {};
+  guardFactory({ on: (name, fn) => { handlers[name] = fn; }, getAllTools: () => [{ name: "Read" }], setActiveTools() {} });
+  handlers.before_agent_start({ prompt: `${PREFIX}${policy.nonce}]]\nread`, systemPrompt: "base" }, { cwd });
+  const statSync = sync.statSync;
+  try {
+    sync.statSync = file => { const stat = statSync(file); if (file === source) stat.size = size; return stat; };
+    assert.equal(handlers.tool_call({ toolName: "Read", input: { path: source } }, { cwd }), undefined);
+    size++; assert.equal(handlers.tool_call({ toolName: "Read", input: { path: source } }, { cwd }).block, true);
+  } finally { sync.statSync = statSync; }
+  await assert.rejects(h.manager.reference(scope, { path: source }), /500 MB/);
+  assert.deepEqual(await fs.readdir(path.join(cwd, "files")), []);
 });

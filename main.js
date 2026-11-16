@@ -4,19 +4,11 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { createStore } = require("./store");
 const { createAttachments } = require("./attachments.cjs");
+const { sourcePaths, createSourceReader } = require("./source-references.cjs");
 
 const COMMAND_ID = "com.vastsa.side-chat.open";
-const MESSAGE_BUDGET = 180_000;
 const SESSION_BUDGET = 40_000;
-const SYSTEM_MAX = 32 * 1024;
 const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-
-const SYSTEM_PROMPT = [
-  "You are Side Chat, a compact sidebar assistant inside PI-Desktop.",
-  "Answer directly. You have no tools.",
-  "If a session transcript is attached, treat it as background; quote it only when asked.",
-  "Reply in the same language the user is using.",
-].join(" ");
 
 const projects = new Map();
 let dataFile = "";
@@ -32,19 +24,6 @@ function nid(prefix) {
 
 function errorWith(code, message) {
   return Object.assign(new Error(message), { code });
-}
-
-function extractText(result) {
-  if (!result) return "";
-  if (typeof result === "string") return result;
-  if (typeof result.text === "string") return result.text;
-  if (typeof result.content === "string") return result.content;
-  if (Array.isArray(result.content)) {
-    return result.content
-      .map((part) => (typeof part === "string" ? part : part?.text ?? ""))
-      .join("");
-  }
-  return "";
 }
 
 function messageText(message) {
@@ -247,19 +226,6 @@ async function sessionContext(sessionId) {
   }
 }
 
-function trimHistory(messages, budget) {
-  const kept = [];
-  let used = 0;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const item = messages[index];
-    const size = item.content.length + 16;
-    if (used + size > budget && kept.length > 0) break;
-    kept.push(item);
-    used += size;
-  }
-  return kept.reverse();
-}
-
 async function bootstrap() {
   const [settings, models, locale] = await Promise.all([
     readSettings(), listModels(), pi.app.getLocale().catch(() => "en"),
@@ -274,41 +240,21 @@ async function bootstrap() {
   };
 }
 
-async function runComplete(job) {
+async function runSideAgent(job) {
   const entry = jobs.get(job.id);
   if (!entry) return;
   try {
-    const history = job.messages
-      .filter((message) => (message.role === "user" || message.role === "assistant") && message.content)
-      .map((message) => ({ role: message.role, content: message.content }));
     let contextBlock = "";
     if (job.includeSession && job.sessionId) {
       const attached = await sessionContext(job.sessionId);
       contextBlock = attached.text;
     }
-    let result;
-    if (job.backend === "agent") {
-      result = { text: await attachmentSupport.run(job, contextBlock) };
-    } else {
-      const packed = trimHistory(history, contextBlock ? MESSAGE_BUDGET - contextBlock.length - 64 : MESSAGE_BUDGET);
-      const messages = contextBlock
-        ? [{ role: "user", content: `Current PI-Desktop session transcript:\n\n${contextBlock}` }, ...packed]
-        : packed;
-      let system = SYSTEM_PROMPT;
-      if (system.length > SYSTEM_MAX) system = system.slice(0, SYSTEM_MAX);
-      result = await pi.agent.complete({
-        modelKey: job.modelKey,
-        thinkingLevel: job.thinkingLevel === "off" ? undefined : job.thinkingLevel,
-        system,
-        messages,
-      });
-    }
-    const text = extractText(result).trim() || "(empty reply)";
+    const text = (await attachmentSupport.run(job, contextBlock)).trim() || "(empty reply)";
     job.store.addAssistantMessage(job.conversationId, text);
     await persist();
     entry.status = "done";
     entry.text = text;
-    entry.usage = result?.usage ?? null;
+    entry.usage = null;
     entry.snapshot = projectSnapshot(job.projectKey);
   } catch (error) {
     const message = error?.code === "RATE_LIMITED"
@@ -326,7 +272,7 @@ async function runComplete(job) {
 async function send(payload) {
   const text = String(payload?.text ?? "").trim();
   const incoming = payload?.attachments ?? [];
-  if (!Array.isArray(incoming) || incoming.length > 8) throw errorWith("INVALID_ATTACHMENT", "At most eight attachments are allowed");
+  if (!Array.isArray(incoming) || incoming.length > 10) throw errorWith("INVALID_ATTACHMENT", "At most ten attachments are allowed");
   if (!text && !incoming.length) throw errorWith("INVALID_ARGUMENT", "message is empty");
   const settings = await readSettings();
   const models = await listModels();
@@ -342,18 +288,18 @@ async function send(payload) {
   const store = projectStore(context);
   const selected = store.active();
   if (payload.conversationId && payload.conversationId !== selected.id) throw errorWith("STALE_CONTEXT", "Session changed. Please send again.");
-  const usesAgent = incoming.length > 0 || selected.messages.some(m => m.attachments?.length);
-  let files = [];
-  if (usesAgent) {
-    const operations = await pi.desktop.listOperations?.();
-    if (!Array.isArray(operations) || !["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"].every(id => operations.some(op => op.id === id))) {
-      throw errorWith("ATTACHMENTS_UNSUPPORTED", "This host does not support independent attachment sessions");
-    }
-    if (incoming.length && payload.conversationId !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
-    files = (await attachmentSupport.resolve({ projectKey: context.projectKey, conversationId: selected.id }, incoming)).map(({ path: _path, ...meta }) => meta);
-    assertContext(payload, await currentContext());
-    if (store.active().id !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
+  const operations = await pi.desktop.listOperations?.();
+  if (!Array.isArray(operations) || !["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"].every(id => operations.some(op => op.id === id))) {
+    throw errorWith("ATTACHMENTS_UNSUPPORTED", "This host does not support independent read-only Side Chat sessions");
   }
+  if (incoming.length && payload.conversationId !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
+  const target = { projectKey: context.projectKey, conversationId: selected.id }, references = [...incoming];
+  for (const sourcePath of sourcePaths(text)) references.push(await attachmentSupport.reference(target, { path: sourcePath }));
+  const unique = [...new Map(references.map(file => [file.id, file])).values()];
+  if (unique.length > 10) throw errorWith("INVALID_ATTACHMENT", "At most ten attachments are allowed");
+  const files = (await attachmentSupport.resolve(target, unique)).map(({ path: _path, source: _source, version: _version, ...meta }) => meta);
+  assertContext(payload, await currentContext());
+  if (store.active().id !== selected.id) throw errorWith("STALE_CONTEXT", "Attachment conversation changed");
   const conversation = store.addUserMessage(text, files);
   await persist();
   const jobId = nid("j");
@@ -362,7 +308,7 @@ async function send(payload) {
     status: "running",
     conversationId: conversation.id,
     modelKey,
-    backend: usesAgent ? "agent" : "complete",
+    backend: "agent",
     thinkingLevel,
     includeSession,
     sessionId: context.sessionId,
@@ -378,7 +324,7 @@ async function send(payload) {
       if (jobs.get(key)?.status !== "running") jobs.delete(key);
     }
   }
-  void runComplete(job);
+  void runSideAgent(job);
   return { jobId, backend: job.backend, snapshot: projectSnapshot(context.projectKey), settings: await readSettings() };
 }
 
@@ -446,7 +392,7 @@ async function onRendererCall(method, args = {}) {
 async function onPanelInvoke(channel, payload = {}) {
   if (channel.startsWith("chat.attachment.")) {
     const action = channel.slice("chat.attachment.".length);
-    if (!["begin", "chunk", "finish", "discard"].includes(action)) throw errorWith("UNSUPPORTED", "Unsupported attachment operation");
+    if (!["begin", "chunk", "finish", "discard", "reference"].includes(action)) throw errorWith("UNSUPPORTED", "Unsupported attachment operation");
     // An opaque upload token remains valid for cleanup after navigation, never for sending.
     if (action === "discard") return attachmentSupport.discard({ projectKey: payload.projectKey, conversationId: payload.conversationId }, payload);
     const context = await currentContext();
@@ -506,6 +452,11 @@ async function onLoad() {
   dataFile = path.join(dataPath, "conversations.json");
   attachmentSupport = createAttachments({
     io: fs, pathLib: path, dataPath,
+    readSource: createSourceReader(pi.fs?.requestDirectory && pi.fs?.stat && pi.fs?.readRange ? {
+      requestDirectory: () => pi.fs.requestDirectory(),
+      stat: file => pi.fs.stat(file),
+      readRange: (file, offset, length) => pi.fs.readRange(file, offset, length),
+    } : null, path, file => fs.realpath(file)),
     invoke: input => pi.desktop.invoke(input),
     getMainId: async () => (await pi.session.getActive())?.sessionId || null,
   });

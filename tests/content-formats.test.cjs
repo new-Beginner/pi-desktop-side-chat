@@ -134,22 +134,21 @@ test("combined quoted content budget is checked before any prompt", async t => {
   const h = await setup(t), a = await h.upload("a.txt", Buffer.from("a".repeat(200_000))), b = await h.upload("b.txt", Buffer.from("b".repeat(200_000)));
   await assert.rejects(h.run([a, b]), { code: "ATTACHMENT_CONTENT_LIMIT" }); assert.ok(!h.calls.some(call => call.operation === "agent/prompt"));
 });
-test("multi-page conversion cannot bypass the eight-output limit", async t => {
+test("multi-page conversion accepts ten outputs but refuses more", async t => {
   const h = await setup(t), bytes = await fs.readFile(path.join(fixtures, "multipage.tiff")), files = [];
   for (let i = 0; i < 5; i++) files.push(await h.upload(`pages-${i}.tiff`, bytes, "image/tiff"));
-  await assert.rejects(h.run(files), { code: "ATTACHMENT_CONTENT_LIMIT" }); assert.ok(!h.calls.some(call => call.operation === "agent/prompt"));
+  assert.equal((await h.run(files)).attachments.length, 10);
+  files.push(await h.upload("extra-pages.tiff", bytes, "image/tiff"));
+  await assert.rejects(h.run(files), { code: "ATTACHMENT_CONTENT_LIMIT" });
 });
-test("derived copies are reused, persisted and included in the conversation cache limit", async t => {
+test("derived copies are reused and persisted without a cumulative cache quota", async t => {
   const h = await setup(t), original = await fs.readFile(path.join(fixtures, "sample.docx")), file = await h.upload("report.docx", original);
   const first = await h.run([file]), second = await h.run([file]); assert.equal(first.attachments[0].path, second.attachments[0].path);
   const root = path.dirname(path.dirname(first.attachments[0].path)), catalog = JSON.parse(await fs.readFile(path.join(root, "catalog.json"), "utf8"));
   assert.equal(catalog.derived.length, 1); assert.equal(catalog.derived[0].size, Buffer.byteLength(documents(first)[0].content));
   const reloaded = createAttachments({ io: fs, dataPath: h.root }); await reloaded.resolve(scope, [file]);
-  const start = await reloaded.begin(scope, { name: "filler.bin", size: 10_000_000 });
-  for (let offset = 0; offset < 10_000_000; offset += 256 * 1024) await reloaded.chunk(scope, { id: start.id, offset, data: Buffer.alloc(Math.min(256 * 1024, 10_000_000 - offset), 97).toString("base64") });
-  await reloaded.finish(scope, { id: start.id });
-  const tooMuch = 20_000_000 - original.length - catalog.derived[0].size - 10_000_000 + 1;
-  await assert.rejects(reloaded.begin(scope, { name: "over-limit.bin", size: tooMuch }), /20 MB/);
+  const pending = await reloaded.begin(scope, { name: "large-file.bin", size: 500_000_000 });
+  await reloaded.discard(scope, pending);
 });
 test("a failed converted-catalog write removes new copies and allows a clean retry", async t => {
   const h = await setup(t), file = await h.upload("report.docx", await fs.readFile(path.join(fixtures, "sample.docx"))), write = fs.writeFile;
@@ -224,4 +223,10 @@ test("pre-extraction backend policies replay historical document contents after 
   const prompt = h.calls.findLast(call => call.operation === "agent/prompt").args[0];
   assert.match(documents(prompt)[0].content, /DOCX-LAST-620/);
   assert.equal(h.calls.filter(call => call.operation === "session/create").length, 2);
+});
+
+test("file intake limits are 500 MB and ten outputs while decoded-content budgets remain bounded", () => {
+  const { LIMITS } = require("../attachment-content.cjs");
+  assert.equal(LIMITS.input, 500_000_000); assert.equal(LIMITS.outputs, 10);
+  assert.equal(LIMITS.part, 8 * 1024 * 1024); assert.equal(LIMITS.expanded, 32 * 1024 * 1024); assert.equal(LIMITS.text, 256_000);
 });

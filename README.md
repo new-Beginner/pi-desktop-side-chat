@@ -3,23 +3,23 @@
 PI-Desktop plugin: a chat docked in the right work panel.
 
 - Independent, project-scoped multi-turn history (stored in the plugin private data directory)
-- Ordinary text keeps host agent.complete; attachment conversations use independent read-only host Agent sessions, without exposing credentials
+- All sidebar messages use independent read-only host Plan Agent sessions; ordinary text no longer calls agent.complete, and provider credentials stay in the host
 - Automatically follow the selected host session; optionally attach its transcript
 - Optional: return the latest successful reply to the main input as a draft, without sending
 - Safely render assistant Markdown with bundled marked / DOMPurify, with no CDN
 
-Version 0.1.15 keeps the declared PI-Desktop >=0.21.1-0 requirement and offline attachment content preparation without new permissions. Images require a vision-capable model; Office extraction is not full-page rendering or OCR.
+Version 0.1.18 permits files up to 500 MB (500,000,000 bytes) and up to 10 files/converted outputs per send, removing the former 20 MB cumulative cache quota. Existing source files are still referenced without copying originals. Office/TIFF use official fs.read; upgrading from a version without this grant still requires explicit reload and approval. Side chats remain independent read-only Plan sessions; images need vision. PDF, OCR and full Office rendering remain unsupported.
 
 | Format | Model input |
 | --- | --- |
-| PNG, JPG/JPEG, WebP, GIF | Original images through official image attachments |
+| PNG, JPG/JPEG, WebP, GIF | Source paths through native Read; pathless originals through official image attachments |
 | TIF/TIFF | Supported single/multi-page RGB, grayscale or palette TIFF converted to PNG; unsupported variants refused |
 | Word: DOC/DOCX | Extracted body text and tables as UTF-8 |
 | Excel: XLS/XLSX | Worksheets/tables and saved values; XLSX formula source is also included, without recalculation |
 | PowerPoint: PPT/PPTX | Slide text and speaker notes |
-| TXT, Markdown, CSV/TSV, JSON, C/C++, CUDA (CU/CUH), etc. | Decoded text supplied as data, never executed |
+| TXT, Markdown, CSV/TSV, JSON, C/C++, CUDA (CU/CUH), etc. | Source paths through native Read/Grep on demand; pathless files retain local decoding, never code execution |
 
-Select files, drop them, or paste actual clipboard images/files in the input. Document text, JSON and source code may also be pasted as ordinary messages. Plain file paths/links are not imported. Attachments remain queued until Send. Limits: 8 files/converted pages per send, 10 MB per file, 20 MB per conversation including originals and extracted copies; 256,000 UTF-8 bytes per extracted document and 384,000 bytes of combined quoted document JSON. Oversized content is refused, not truncated. Optional main-session context, draft-only return and all other isolation remain unchanged. Explicit agent.extension approval is still needed when first adding that permission.
+Select, drop or paste real files, or submit explicit absolute paths such as `Read "E:/my files/notes.md"` (quote paths with spaces). Nothing is registered/read until Send. Real paths become references; pathless screenshots/virtual File objects and necessary TIFF PNG pages still require storage. Limits are 10 files/converted outputs and 500 MB per file, with no cumulative cache-size quota or automatic deletion of old attachments. Extracted text remains limited to 256,000 UTF-8 bytes/document and 384,000 bytes of combined document JSON; decoding, pixel, host and model budgets remain unchanged. A 500 MB intake limit does not guarantee complete decoding or one-shot model input for arbitrary 500 MB files. Moving a source invalidates its reference; re-submit changed Office/TIFF paths to refresh extraction. History, optional main context and draft-only return are preserved.
 
 Real-format samples verify extracted content and official prompt parameters. Installed 0.22.0 Runner/sidecar contracts and constructed Chromium paste events have separate regressions; running-host, OS-clipboard and actual model acceptance remain unverified. See [attachment details](docs/attachments-0.1.10.zh-CN.md) for boundaries, official references and reproduction commands.
 
@@ -39,14 +39,14 @@ Command palette: `Side Chat: Open` (detached window).
 |---|---|
 | `ui.view` / `ui.panel` | Docked view and optional window |
 | `models.list` | List signed-in models |
-| `agent.complete` | Side completion (host holds the keys) |
-| `desktop.control` | Read the followed session context, never send a prompt |
+| `desktop.control` | Create/prompt/query/abort independent side sessions and optionally read main-session background; never prompt or abort the main session |
 | `clipboard.write` | Copy a reply |
 | `shell.openExternal` | Open HTTP(S) / mailto Markdown links through the host permission gateway |
 | `renderer.extension` | Run trusted host-renderer code to insert a reply into the main draft, without sending or copying the user's existing draft to the plugin process |
-| `agent.extension` | Limit independent attachment sessions to Read/Glob/Grep within the attachment directory; not an OS sandbox |
+| `agent.extension` | Restrict reads to cached attachments and exact registered source files, never parent directories; deny writes, Shell, delegation and session controls; not an OS sandbox |
+| `fs.read` | Parse Office/TIFF source files using official directory selection and bounded reads; process-lifetime directory authorization does not grant the Agent access to that directory |
 
-No plugin-owned network. Completions are capped by the host: 8 calls / 60s, 90s timeout.
+The host owns model networking. Read-only refers to Agent tools, not to the plugin's own history/cache persistence. Explicit agent.extension approval is needed when first enabling it, even without attachments. Optional main-session context and draft-only return stay unchanged. See [read-only sidebar details](docs/attachments-0.1.10.zh-CN.md) for official references, the unified call chain and acceptance.
 
 ## Updating from 0.1.0
 

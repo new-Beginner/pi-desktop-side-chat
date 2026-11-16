@@ -1,8 +1,74 @@
-# 0.1.10–0.1.14：侧聊图片与文件输入
+# 0.1.10–0.1.18：只读侧聊与图片/文件输入
 
-**使用前提：首次增加权限时重新加载插件并明确授权 `agent.extension`，不能只靠热更新；已授权但握手失败不等于未授权。** 宿主须提供 `session/create`、`agent/prompt`、`agent/getStatus`、`session/get`、`agent/abort` 和可信扩展钩子。`before_agent_start.sessionId` 是可选字段，不作为硬性前提。图片问答须选择视觉模型。0.1.14 对下表格式本地提取/转换，不新增权限；PDF、OCR、完整 Office 渲染不在范围内。
+**0.1.16起全部侧聊都需要只读Agent后端，普通文字也不再调用 `agent.complete`。** 首次增加/启用权限时重新加载插件并明确授权 `agent.extension`，不能靠热更新扩大授权；已授权但握手失败不等于未授权。宿主须提供 `session/create`、`agent/prompt`、`agent/getStatus`、`session/get`、`agent/abort` 和可信扩展钩子。`before_agent_start.sessionId` 是可选字段。图片须选择视觉模型；沿用0.1.14本地提取/转换，PDF、OCR、完整Office渲染不在范围内。
 
-实现未修改宿主源码。自动验证使用正式插件HTML、真实Chromium、私有临时文件与模拟IPC，另加载安装版0.22.0 Runner并查询独立侧车状态，均不发起模型请求。这不等于运行中宿主的系统剪贴板、授权或真实识图验收。
+实现未修改宿主源码。自动验证使用正式插件HTML、真实Chromium、私有临时文件与模拟IPC，另加载当前安装版Runner并查询独立侧车状态，均不发起模型请求。这不等于运行中宿主的系统剪贴板、授权或真实识图验收。
+
+## 0.1.18：单文件500 MB、每次10个
+
+- 单文件接收/引用上限统一为500,000,000字节（500 MB），前端队列、后端上传、源路径登记、官方分段读取及实际守卫均同步；单次最多10个文件/转换输出，TIFF页按输出计数。通过新完整入口 `agent/attachment-guard-0.1.18.js` 避免Runner继续复用旧10 MB守卫工厂，不修改旧守卫文件。
+- 取消旧20 MB累计队列/缓存门槛，避免仍在500 MB之前拦截；不设新的累计缓存容量限制，也不删除已有历史附件。**有真实源路径的原件不复制；没有源路径的截图/虚拟文件、必要TIFF PNG及旧附件仍需存储**，所以保留存储实现，不承诺完全无缓存。
+- 500 MB是插件输入大小上限，不是模型上下文容量或任意大文档完整解析保证。Office解压、文本256,000字节/文件、合并文档JSON 384,000字节、像素和请求预算保持不变；宿主原生Read、图片和模型仍受宿主自身限制。超限明确失败，不截断冒充完整读取。
+- 新测试覆盖500 MB精确边界与超1字节、10个与第11个、无旧累计门槛、10个转换输出及只读/无原件复制回归。使用模拟大小/元数据和小样本验证边界，不等于真实500 MB传输、整文件解析或模型性能测试。本轮不新增权限；从未授权fs.read的旧版本升级仍按0.1.17说明重载授权。
+
+以下版本章节记录对应历史行为，当前容量以上述0.1.18为准。
+
+## 0.1.17：引用本地路径，不复制原件
+
+**新增 `fs.read`，升级须在宿主重新加载插件并明确授权，热更新不能扩大权限。** 该权限仅供 Office/TIFF 解析，声明 `fs.read.root: userSelected`；用户在官方目录选择框中选择包含源文件的目录，授权仅当前插件进程有效，一次一个根。插件只读取当前侧聊已登记的具体源文件，不把所选目录开放给 Agent。
+
+发送示例：`请读取 "E:/my files/notes.md"`。含空格须用英文引号或反引号；也支持无空格的绝对路径。只扫描当前用户提交的消息，不从 AI 回复、文件内容或主背景登记新路径。相对路径、URL、网页图片和目录浏览不在新增范围内。
+
+| 位置 | 必要变更及原因 |
+| --- | --- |
+| `renderer/attachments.js` | 通过官方 getDroppedFilePath 取得真实 File 源路径时只登记引用；无路径截图/虚拟文件保留原上传链路。选择或粘贴本身不登记/发送，引用失败不静默退回复制 |
+| `main.js`、`source-references.cjs` | 处理明确绝对路径，保持项目/会话/对话复查；Office/TIFF经官方 requestDirectory/stat/readRange 分块读入内存。串行转换，防止进程级所选根在并发侧聊间交叉 |
+| `attachments.cjs` | 私有catalog新增sources元数据，不复制原件；外部路径只作为content引用数据，绝不放入受根目录限制的agent/prompt.attachments。Office文字直接引用，TIFF只缓存必要PNG |
+| `agent/attachment-guard-0.1.17.js` | 完整新入口避免Runner按路径缓存旧工厂；仅放行缓存和已发送的精确源文件，每次检查所有路径参数及真实路径，拒父目录/邻接文件/链接改指向，继续拒绝写入/Shell/委派/会话控制 |
+| `manifest.json`、双语README、CHANGELOG | 推进0.1.17并公开新增fs.read授权、存储和失效边界；未添加fs.write或Shell权限，旧0.1.11守卫、缓存和历史不改写 |
+
+原生工具的外部路径权限与插件fs权限是两套门禁。本地宿主 `rpc/mod.rs` 的 requires_external_path_permission 将外部Read/Grep交给权限管理；非auto且无既有授权时请求确认，会话授权按工具而非单文件。因此精确文件守卫不能删除，不虚构公开allow_external_paths参数，也不自动批准权限。官方依据为[插件指南](https://github.com/vastsa/PI-Desktop/blob/main/docs/plugin-development.md)、[工具权限](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/03-runtime/03-tools-and-permissions.md)及[可信扩展](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/16-trusted-extensions.md)。
+
+源引用不是快照：文件移动/删除或符号链接改指向会明确失败。原生Read/Grep读取当前文件；Office/TIFF提取对应最近一次提交，修改原文件后重新提交路径刷新。授权读取前后校验大小/时间/规范路径，中途变化或短读拒绝。原生文本解码由宿主决定；旧无路径附件沿用原解码器。PDF、OCR和完整Office渲染仍不支持。
+
+每次仍限8个文件/转换页、单文件10 MB，文本/解压/请求预算不变。20 MB缓存只统计实际保存的原件、派生页及未完成上传，不计算源引用原件大小；Office源引用不另存提取文本副本。聊天历史、工具结果及宿主图片处理仍可能占空间，不承诺零存储。只读策略仍非OS沙箱，官方钩子fail-open边界不变。
+
+自动回归覆盖无原件复制/预读、元数据持久化与旧缓存、归属隔离、精确文件/全部路径别名/目录/链接边界、官方目录拒绝和选错、短读/中途变化/取消、并发转换、Office正文、TIFF仅派生页及合并8页预算。完整命令见“自动验证”。模拟桥与安装版Runner/sidecar契约不等于实际宿主授权或真实模型已验收。
+
+实际验收：重新加载0.1.17并确认fs.read及agent.extension；提交已知TXT绝对路径，检查侧Agent有成功Read结果且files目录没有原件复制；尝试读取未登记的相邻文件及写入/Shell，应拒绝。提交DOCX/TIFF并在官方目录框授权，检查正文/图片正确且仅保存必要派生页。再用系统真实文件选择/拖放/粘贴和无源路径截图验收两路，切项目验证原历史与主草稿/模型/任务不变。拒绝授权、取消或文件失效均应报错，不得转向主会话或自动复制。
+
+以下各节保留对应历史版本的行为，新增路径能力以上述0.1.17说明为准。
+
+## 0.1.16：全部侧聊统一只读 Agent
+
+本次只修复后端分流：普通文字、独立会话、附件及追问全部复用既有独立Plan会话，不判断正文是否含路径，也不再保留单次补全降级。旧侧聊历史首次进入Agent时重放自己的记录；项目、对话、在途回复归属不变。
+
+| 位置 | 必要变更 | 保留边界 |
+| --- | --- | --- |
+| `main.js` 的 `send/runSideAgent` | 无条件检查后台操作能力，统一 `backend: agent`，移除complete调用及其专用提示/裁剪函数 | 仍校验主会话/项目/对话代次，可选读取主背景，回复仅落原侧聊 |
+| `attachments.cjs` | 后台会话标题改为只读侧聊，补充按用户语言直接回答的提示 | 会话创建仍强制Plan，身份不符拒绝；空附件也走相同握手、状态解包和请求关联 |
+| `renderer/index.html` | 中英文启动/授权提示从“附件”改为“侧聊” | 仅改4行文案，不改输入入口、布局、底栏或草稿桥 |
+| `manifest.json` | 推进0.1.16，删除未使用的agent.complete权限 | 其余权限与贡献项不变；不新增fs.write或写工具 |
+| 两个Node测试文件 | Agent桥替身、旧API调用即失败；补充纯文本和无降级回归 | 真实守卫在空附件会话中拒绝写工具；旧附件、历史和回填回归保留 |
+
+当前调用链：`chat.send → send → runSideAgent → attachmentSupport.run → session/create(mode: plan) → agent/prompt → agent/getStatus → session/get → chat.poll`。独立后台会话可能出现在宿主会话列表，但不自动切换为当前主会话；发送、中断均绑定侧聊ID和对应turnId。缺少操作能力、扩展未授权、握手未确认或执行错误时明确失败，绝不调用complete或改向主会话发送。
+
+### 官方做法与只读含义
+
+- [官方插件API](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/03-plugin-api.md)与[审查操作目录](https://github.com/vastsa/PI-Desktop/blob/main/apps/desktop/electron/main/mcp-control.ts)：通过既有 `pi.desktop.invoke({operation,args})` 创建、发送和查询独立会话，不虚构pi.agent.prompt，不直接访问模型密钥或修改宿主源码。
+- [可信扩展§5–§7](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/16-trusted-extensions.md)：继续使用正式 `before_agent_start`、`tool_call`、`agent_end`、`setActiveTools`。守卫实现未改，仍为完整入口 `agent/attachment-guard-0.1.11.js`，没有因改版本而制造新转发壳。
+- Plan运行模式、Read/Glob/Grep白名单和同步调用拦截同时保留；Write/Edit、Shell、委派及会话控制不被授予执行能力。官方明确Plan可保留“被拒绝”的Write/Edit/Task声明，不能根据名称可见就推断有执行权限；原生模式门禁先于扩展调用拦截。
+- 官方扩展钩子仍有fail-open语义，这不是OS强沙箱。这里只限制模型可执行工具；插件正常保存自身对话、附件、策略/确认文件属于既有实现，不等于模型获得写盘工具。
+- `desktop.invoke` 由 `desktop.control` 授权；删除的是不再调用的单次补全权限。未增加权限、不自动批准工具；此前没有授权agent.extension的用户，纯文本现在也会明确失败，需由用户在宿主中授权。
+- 七档设置和模型key保留。统一沿用会话接口，`off/minimal/low/medium/high/xhigh/max` 原样传入session/create；旧complete特有的off省略规则随该接口移除，不再适用。
+
+**本次没有实现路径引用或扩大文件范围。** 只读工具仍限该侧聊私有 `files/`；手动输入E盘等任意路径不会因更换后端而获得访问许可。复制/拖放/粘贴附件、10MB/20MB容量限制、格式提取、PDF不支持和源文件复制缓存行为均未改。保留“带上会话”与仅草稿回填两个明确例外，其余主侧隔离不变。
+
+### 验证与实际验收
+
+新增回归先在旧实现复现3项失败，修改后113项Node与93项Chromium检查通过，共206项。覆盖纯文本、后续加附件复用会话、独立会话、旧文本历史重放、七档参数、能力/授权失败不降级、空附件守卫拒绝Write/Edit/Bash/Shell/Task/SessionTask/ToolSearch，以及无握手时只中断侧聊turn。完整命令见下方“自动验证”；本次启用了按当前安装位置选择的真实Runner冷/热工厂与侧车IPC测试，均未调用模型。浏览器仍使用模拟官方桥，不代表运行中宿主的模型/剪贴板或新装授权验收。
+
+在运行中宿主加载0.1.16后：先不带附件发送普通问题，确认创建/复用独立Plan会话；再追加附件并追问，主模型/历史/草稿和运行任务不应变化。检查工具执行只读，要求写入或执行Shell不得执行；开启主上下文及主动发回草稿分别验收。缺少授权/守卫时应明确失败，不退回complete。用户没有要求本轮打包、安装、提交或推送，因此本轮仅修改源码并运行自动检查。
 
 ## 0.1.14：把实际内容提供给模型
 
@@ -111,7 +177,7 @@ node scripts/vendor-attachment-readers.cjs "$deps" "$deps/node_modules/esbuild"
 1. 聚焦输入框后可直接Ctrl+V粘贴图片/文件；也可点击附件按钮选择或拖放到输入框。允许一次多个，可点击 `×` 移除。
 2. 输入问题后发送，也允许只发送附件。添加文件本身不会上传或发送；点击发送时才上传选中文件的内容。
 3. 单次最多8个文件，单文件上限10,000,000字节，每个侧聊的私有附件缓存上限20,000,000字节。缓存已满时请新建侧聊。
-4. 普通文本仍走原有 `agent.complete`。某个侧聊使用过附件后，后续追问走该侧聊独立的后台 Agent，保留附件上下文。
+4. 0.1.16起普通文字、附件及全部追问统一走该侧聊独立的只读Plan Agent，不再使用 `agent.complete`；旧版本分流行为仅属下方历史记录。
 
 0.1.14 的图片、Office、文本与代码按上方支持表预处理后提供给模型。PDF或其它未支持二进制格式明确报错，不再以“可以上传”代替可读性。敏感文件名如 `.env`、`.env.*`、私钥/证书扩展名仍被拒绝。
 
@@ -147,7 +213,7 @@ node scripts/vendor-attachment-readers.cjs "$deps" "$deps/node_modules/esbuild"
 
 ## 官方依据
 
-- [插件 API：plugin、desktop control、agent.complete](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/03-plugin-api.md)：私有数据目录；审查过的桌面操作；插件发起 `session/create`/`agent/prompt` 不切换当前会话；普通 complete 为 `tools: []`，因此不把附件路径塞进纯补全冒充读取。
+- [插件 API：plugin、desktop control、agent.complete](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/03-plugin-api.md)：私有数据目录、审查过的桌面操作，创建/发送独立会话不切换当前会话；0.1.16已移除单次complete接口及其权限，原模型密钥仍由宿主持有。
 - [可信扩展 §5、§6、§7](https://github.com/vastsa/PI-Desktop/blob/main/docs/spec/07-plugins/16-trusted-extensions.md)：支持 `getAllTools/setActiveTools`、会话工作目录 `ctx.cwd`、`before_agent_start` 的可选会话身份、可阻止执行的 `tool_call`、`agent_end`；同时明确钩子不是强制安全检查机制。
 - [插件开发 §6.3、§6.11](https://github.com/vastsa/PI-Desktop/blob/main/docs/plugin-development.md)：插件私有数据、Agent扩展入口与 `agent.extension` 高风险授权；权限增加须重载并由用户确认。
 - [官方 AgentPromptRequest / AgentPromptAttachment](https://github.com/vastsa/PI-Desktop/blob/main/packages/shared/src/types/agent.ts)：`content` 为字符串，另支持 `attachments`，每项含 `path/name/kind/mimeType/size`；文档提取文字放入前者，图片用后者，不虚构内联图片API。
@@ -166,7 +232,7 @@ export SIDE_CHAT_HOST_RUNNER='D:/Mypi_deskktop/PI-Desktop/resources/agent-runtim
 # 可选：安装版侧车的只读状态IPC契约测试，不创建真实会话。
 export SIDE_CHAT_HOST_SIDECAR='D:/Mypi_deskktop/PI-Desktop/resources/agent-runtime/sidecar.js'
 export JITI_FS_CACHE=0 JITI_CACHE_DIR="$PI_SCRATCH_DIR/jiti-cache"
-node --test tests/side-chat.test.cjs tests/draft-bridge.test.mjs tests/attachments.test.cjs tests/content-formats.test.cjs
+node --test tests/side-chat.test.cjs tests/draft-bridge.test.mjs tests/attachments.test.cjs tests/content-formats.test.cjs tests/source-references.test.cjs
 node tests/theme-follow.cjs
 git diff --check
 ```
@@ -175,7 +241,7 @@ git diff --check
 
 ## 在实际宿主中验收
 
-1. 确认宿主已加载0.1.14。守卫沿用 `agent/attachment-guard-0.1.11.js`，没有新增权限。先验证输入框Ctrl+V产生附件列表且保留原文字，再验证实际内容问答；仅首次增加 `agent.extension` 时需要明确授权，缺少策略不得回退向主会话发送。
+1. 确认宿主已加载0.1.16。守卫仍为 `agent/attachment-guard-0.1.11.js`，没有新增权限，并删除agent.complete权限。先验证不带附件的普通问答也走独立只读Plan；再验证Ctrl+V及附件内容问答。首次增加/启用agent.extension需明确授权，缺少策略不得退回complete或向主会话发送。
 2. **图片**：选择支持图片的模型，添加一张带明显颜色与独有文字的 PNG（例如红色方块和 `SIDE-IMAGE-731`，不要把答案放在文件名），问“图中是什么颜色、写了什么”。正确描述内容才算识图通过，不以返回文件名作为成功。
 3. **文件**：创建 UTF-8 TXT，内含 `SIDE-FILE-926` 和独有最后一行，添加并问“给出文件内验证码和最后一行”。结果必须对应内容。再混合添加 PNG/TXT，并测试仅附件发送与发送前移除其中一项。
    - **多格式**：依次加入 `tests/fixtures/content/` 的DOC/DOCX、XLS/XLSX、PPT/PPTX，提问正文末段、末表数值、末页及备注；答案必须来自内容而非文件名。再测试JSON、C、CU/CUH及带中文编码文件。

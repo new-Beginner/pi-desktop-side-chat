@@ -2,18 +2,18 @@
   "schemaVersion": 1,
   "id": "com.vastsa.side-chat",
   "name": "Side Chat",
-  "version": "0.1.15",
+  "version": "0.1.18",
   "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
   "i18n": {
     "en": {
       "name": "Side Chat",
       "description": "A project-scoped sidebar chat that follows the current session and can return replies to the main input without sending.",
-      "safetyNotes": "Host-owned models keep API keys private. Attachments are copied from user-selected File contents into bounded plugin-private caches and sent to separate Plan-mode sessions. agent.extension limits those sessions to read tools; reload and explicit approval are required. Main-session access remains optional context reading and draft-only return."
+      "safetyNotes": "All sidebar messages use separate read-only Plan sessions. Local source references are exact-file allowlisted and still require native host authorization; originals are not copied. Office/TIFF parsing uses fs.read on a user-selected directory. Pathless files and converted pages are still stored, without a cumulative cache-size quota. File intake is limited to 500 MB and 10 files/outputs; decoding budgets still apply. This is not an OS sandbox; main access remains optional context and draft-only return."
     },
     "zh-CN": {
       "name": "侧边聊天",
       "description": "按项目保存历史的侧边聊天：自动跟随当前会话，可将回复放回主输入框，不自动发送。",
-      "safetyNotes": "通过宿主模型调用，不接触密钥。用户选择的附件内容保存在有上限的插件私有缓存，由独立 Plan 会话只读问答；agent.extension 限制该会话工具，需重载并明确授权。主会话仅可选读取上下文及主动回填草稿，不自动发送。"
+      "safetyNotes": "全部侧聊由独立只读 Plan 会话承接。源路径仅允许登记的具体文件，仍受宿主授权约束，不复制原件；Office/TIFF 经 fs.read 读取用户选择目录。无源路径文件及转换图片仍需存储，不设累计缓存容量门槛。单文件500 MB、每次10个文件/输出，解码预算仍保留。并非 OS 沙箱；主会话仅可选背景和主动回填草稿。"
     }
   },
   "author": "VastSa",
@@ -25,8 +25,8 @@
   "rendererActions": ["plugin.call", "composer.readDraft", "composer.insertText"],
   "rendererCallMethods": ["takeDraft", "finishDraft"],
   "categories": ["productivity"],
-  "changelog": "Release 0.1.15: hide inactive automatically empty history buckets and distinguish same-name nonempty project histories without merging, deleting or changing their keys. Preserve attachments, permissions and main/side isolation.",
-  "safetyNotes": "User-selected attachment bytes are stored in plugin-private per-conversation caches. Separate Plan sessions and an explicitly granted Agent extension restrict attachment Q&A to read tools. This is not an OS sandbox. No provider credentials, automatic main-session sending or main-composer attachment access.",
+  "changelog": "Release 0.1.18: allow files up to 500 MB and up to 10 files/converted outputs per send; remove the conflicting 20 MB cumulative queue/cache quota. Keep source references copy-free, preserve pathless inputs and existing history, and retain decoded-content budgets and native read-only authorization.",
+  "safetyNotes": "Independent Plan sessions restrict reads to cached attachments and exact registered source files. Native authorization applies. fs.read only parses Office/TIFF under a user-selected root. Source originals are not copied; pathless inputs and converted pages still require storage with no cumulative cache quota. The 500 MB/10-file intake limits do not override decoding or model budgets. No automatic main-session sending; not an OS sandbox.",
   "ui": {
     "panel": "renderer/index.html",
     "width": 420,
@@ -37,7 +37,7 @@
     }
   },
   "contributes": {
-    "agentExtensions": ["agent/attachment-guard-0.1.11.js"],
+    "agentExtensions": ["agent/attachment-guard-0.1.18.js"],
     "views": [
       {
         "id": "chat",
@@ -64,7 +64,7 @@
         "type": "string",
         "default": "",
         "title": "Model",
-        "description": "providerId/modelId used for side-chat completions."
+        "description": "providerId/modelId used for independent read-only side-chat Agent sessions."
       },
       {
         "key": "thinkingLevel",
@@ -94,13 +94,14 @@
     "ui.view",
     "ui.panel",
     "models.list",
-    "agent.complete",
     "desktop.control",
     "clipboard.write",
     "shell.openExternal",
     "renderer.extension",
+    "fs.read",
     "agent.extension"
   ],
+  "fs": { "read": { "root": "userSelected" } },
   "engines": {
     "piDesktop": ">=0.21.1-0"
   },

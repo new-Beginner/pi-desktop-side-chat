@@ -26,8 +26,10 @@
       if (!ready()) return;
       sync(); selectedScope = signature(scope());
       for (const file of selected) {
-        if (files.length >= 8 || file.size > 10_000_000 || files.reduce((n, f) => n + f.file.size, 0) + file.size > 20_000_000) { hint(t("attachmentLimit")); break; }
-        files.push({ file });
+        let sourcePath = null;
+        try { sourcePath = window.pluginBridge.getDroppedFilePath?.(file) || null; } catch { /* Virtual files retain the original upload route. */ }
+        if (files.length >= 10 || file.size > 500_000_000) { hint(t("attachmentLimit")); break; }
+        files.push({ file, sourcePath });
       }
       sync();
     }
@@ -44,7 +46,7 @@
       let pasted = [...(data?.files || [])];
       if (!pasted.length) pasted = [...(data?.items || [])].filter(item => item.kind === "file").map(item => item.getAsFile()).filter(Boolean);
       if (!pasted.length) return;
-      // Keep native text insertion for mixed clipboard content; never read paths or HTML.
+      // Keep native text insertion for mixed clipboard content; resolve real File paths only.
       if (!data.getData("text/plain")) event.preventDefault();
       addFiles(pasted);
     });
@@ -59,6 +61,10 @@
           let id;
           try {
             assertScope(target);
+            if (item.sourcePath) {
+              item.staged = await invoke("chat.attachment.reference", { ...target, path: item.sourcePath });
+              assertScope(target); result.push(item.staged); continue;
+            }
             ({ id } = await invoke("chat.attachment.begin", { ...target, name: item.file.name, size: item.file.size, mimeType: item.file.type }));
             for (let offset = 0; offset < item.file.size; offset += 256 * 1024) {
               const bytes = new Uint8Array(await item.file.slice(offset, offset + 256 * 1024).arrayBuffer()); let binary = "";

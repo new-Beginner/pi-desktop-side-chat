@@ -11,9 +11,9 @@ function host(initialFile, behavior = {}) {
   let active = { sessionId: "a1", projectPath: "D:/projects/A", activeTurn: null };
   let workspace = { path: "D:/projects/A", name: "A", projectId: "project-a" };
   let settings = { modelKey: "mock/model", thinkingLevel: "low", includeSession: true };
-  let resolveCompletion;
+  let releasePrompt;
   let delayed = false;
-  const completions = [], operations = [];
+  const completions = [], operations = [], prompts = [];
   const sideSessions = new Map();
   const fakeFs = {
     readFile: async (p) => { if (!files.has(p)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); return files.get(p); },
@@ -26,6 +26,8 @@ function host(initialFile, behavior = {}) {
     appendFile: async (p, bytes) => { files.set(p, Buffer.concat([Buffer.from(files.get(p) || ""), bytes])); },
     unlink: async p => { if (!files.delete(p)) throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
     rename: async (a, b) => { files.set(b, files.get(a)); files.delete(a); },
+    realpath: async p => { if (!files.has(p)) throw Object.assign(Error("missing"), { code: "ENOENT" }); return p; },
+    stat: async p => { if (!files.has(p)) throw Object.assign(Error("missing"), { code: "ENOENT" }); return { isFile: () => true, size: Buffer.byteLength(files.get(p)), mtimeMs: 1, ctimeMs: 1 }; },
   };
   const pi = {
     plugin: { getDataPath: async () => "/private", getSettings: async () => ({ ...settings }), setSettings: async (p) => { settings = { ...settings, ...p }; } },
@@ -40,33 +42,30 @@ function host(initialFile, behavior = {}) {
     } },
     session: { getActive: async () => active },
     clipboard: { writeText: async () => {} },
-    desktop: { listOperations: async () => ["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"].map(id => ({ id })), invoke: async (p) => {
+    desktop: { listOperations: async () => (behavior.unsupported ? [] : ["session/create", "agent/prompt", "agent/getStatus", "session/get", "agent/abort"]).map(id => ({ id })), invoke: async (p) => {
       operations.push(p);
-      if (behavior.attachments) {
-        const input = p.args[0];
-        if (p.operation === "session/create") {
-          const session = { ...input, id: `side-${sideSessions.size + 1}`, messages: [] }; sideSessions.set(session.id, session); return { session };
-        }
-        if (p.operation === "agent/prompt") {
-          const session = sideSessions.get(input.sessionId);
-          const policy = JSON.parse(files.get(path.posix.join(session.projectPath, ".side-chat-policy.json")));
-          files.set(path.posix.join(session.projectPath, ".side-chat-ready.json"), JSON.stringify({ sessionId: session.id, nonce: policy.nonce }));
-          session.messages.push({ role: "user", content: input.content }, { role: "assistant", content: "attachment backend reply" });
-          return { accepted: true, turnId: "side-turn" };
-        }
-        if (p.operation === "agent/getStatus") return { status: { sessionId: input, isRunning: false, pendingToolConfirmations: 0 } };
-        if (p.operation === "agent/abort") return { ok: true };
-        if (p.operation === "session/get" && sideSessions.has(input.id)) return { session: sideSessions.get(input.id) };
+      const input = p.args[0];
+      if (p.operation === "session/create") {
+        const session = { ...input, id: `side-${sideSessions.size + 1}`, supportsVision: true, messages: [] }; sideSessions.set(session.id, session); return { session };
       }
+      if (p.operation === "agent/prompt") {
+        prompts.push(input);
+        if (behavior.promptFailure) throw Object.assign(new Error("agent.extension not granted"), { code: "PERMISSION_DENIED" });
+        const session = sideSessions.get(input.sessionId), policy = JSON.parse(files.get(path.posix.join(session.projectPath, ".side-chat-policy.json")));
+        files.set(path.posix.join(session.projectPath, ".side-chat-ready.json"), JSON.stringify({ sessionId: session.id, nonce: policy.nonce }));
+        session.messages.push({ role: "user", content: input.content });
+        const answer = delayed ? await new Promise(resolve => { releasePrompt = resolve; }) : behavior.attachments ? "attachment backend reply" : "# Reply\n\n**done**";
+        session.messages.push({ role: "assistant", content: answer });
+        return { accepted: true, turnId: `side-turn-${prompts.length}` };
+      }
+      if (p.operation === "agent/getStatus") return { status: { sessionId: input, isRunning: false, pendingToolConfirmations: 0 } };
+      if (p.operation === "agent/abort") return { ok: true };
       if (p.operation === "session/list") return [];
-      if (p.operation === "session/get") return { id: p.args[0].id, messages: [{ role: "user", content: `context:${p.args[0].id}` }] };
-      return { ok: true };
+      if (p.operation === "session/get" && sideSessions.has(input.id)) return { session: sideSessions.get(input.id) };
+      if (p.operation === "session/get") return { id: input.id, messages: [{ role: "user", content: `context:${input.id}` }] };
+      throw new Error(`unexpected desktop operation ${p.operation}`);
     } },
-    agent: { complete: async (p) => {
-      completions.push(p);
-      if (delayed) return new Promise((resolve) => { resolveCompletion = resolve; });
-      return { text: "# Reply\n\n**done**" };
-    } },
+    agent: { complete: async (p) => { completions.push(p); throw new Error("One-shot completion must not be used for Side Chat"); } },
   };
   const sandbox = {
     module: { exports: {} }, console, pi, Buffer, clearTimeout,
@@ -82,14 +81,14 @@ function host(initialFile, behavior = {}) {
   vm.runInContext(fs.readFileSync(path.join(root, "main.js"), "utf8"), sandbox);
   const api = sandbox.module.exports;
   return {
-    api, files, completions, operations,
+    api, files, completions, operations, prompts,
     switchTo(id, folder, projectId) {
       active = id ? { sessionId: id, projectPath: folder, activeTurn: null } : null;
       workspace = folder ? { path: folder, name: folder.split(/[\\/]/).at(-1), ...(projectId ? { projectId } : {}) } : null;
     },
     setWorkspace(value) { workspace = value; },
     delay() { delayed = true; },
-    finish() { resolveCompletion({ text: "late answer for A" }); },
+    finish() { releasePrompt("late answer for A"); },
   };
 }
 async function settle(h, jobId) {
@@ -114,7 +113,7 @@ test("follows active session instead of the previously saved selection", async (
   assert.equal(b.context.sessionId, "a2");
   assert.equal(b.context.projectKey, a.context.projectKey);
   const job = await send(h, "question"); await settle(h, job.jobId);
-  assert.match(h.completions[0].messages[0].content, /context:a2/);
+  assert.match(h.prompts[0].content, /context:a2/);
 });
 
 test("project histories stay separate and restore on switching back", async () => {
@@ -138,7 +137,7 @@ test("project histories stay separate and restore on switching back", async () =
 test("late replies remain bound to their originating project and conversation", async () => {
   const h = host(); const a = await boot(h); h.delay();
   const job = await send(h, "slow A");
-  for (let i = 0; i < 20 && !h.completions.length; i++) await new Promise(setImmediate);
+  for (let i = 0; i < 20 && !h.prompts.length; i++) await new Promise(setImmediate);
   h.switchTo("b1", "D:/projects/B", "project-b");
   await h.api.onPanelInvoke("chat.context"); h.finish();
   const done = await settle(h, job.jobId);
@@ -265,7 +264,7 @@ test("viewing another project's history does not authorize deleting it", async (
   await assert.rejects(h.api.onPanelInvoke("chat.delete", { projectKey: a.context.projectKey, id: a.snapshot.activeId }), { code: "STALE_CONTEXT" });
 });
 
-test("all reasoning levels persist; xhigh/max reach completion unchanged and off retains omission", async () => {
+test("all reasoning levels persist and reach independent Plan sessions unchanged", async () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
   const levels = manifest.contributes.settings.find(setting => setting.key === "thinkingLevel").enum.map(option => option.value);
   assert.deepEqual(levels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
@@ -275,8 +274,10 @@ test("all reasoning levels persist; xhigh/max reach completion unchanged and off
     assert.equal(saved.settings.thinkingLevel, thinkingLevel);
     assert.equal((await h.api.onPanelInvoke("chat.bootstrap")).settings.thinkingLevel, thinkingLevel);
     const job = await send(h, `reasoning ${thinkingLevel}`); await settle(h, job.jobId);
-    assert.equal(h.completions.at(-1).thinkingLevel, thinkingLevel === "off" ? undefined : thinkingLevel);
-    assert.equal(h.completions.at(-1).modelKey, "mock/model");
+    const created = h.operations.findLast(operation => operation.operation === "session/create").args[0];
+    assert.equal(created.thinkingLevel, thinkingLevel);
+    assert.equal(created.providerId, "mock"); assert.equal(created.modelId, "model");
+    assert.equal(created.mode, "plan"); assert.equal(h.completions.length, 0);
   }
   const invalid = await h.api.onPanelInvoke("chat.setSettings", { thinkingLevel: "unknown" });
   assert.equal(invalid.settings.thinkingLevel, "low");
@@ -342,7 +343,7 @@ test("existing general records survive reload intact while project and legacy bu
 test("a late standalone reply stays out of project history after switching", async () => {
   const h = host(); h.switchTo("standalone-1", null); await boot(h); h.delay();
   const job = await send(h, "slow standalone question");
-  for (let i = 0; i < 20 && !h.completions.length; i++) await new Promise(setImmediate);
+  for (let i = 0; i < 20 && !h.prompts.length; i++) await new Promise(setImmediate);
   h.switchTo("a1", "D:/projects/A", "project-a"); await h.api.onPanelInvoke("chat.context"); h.finish();
   const done = await settle(h, job.jobId);
   assert.equal(done.snapshot.projectKey, "general");
@@ -476,4 +477,64 @@ test("repeated context refreshes and Windows slash/case variants do not create d
     assert.equal(data.context.projectKey, first.context.projectKey);
     assert.equal(data.projects.filter(p => p.key === first.context.projectKey).length, 1);
   }
+});
+
+test("plain text and later attachments share the independent read-only Agent backend", async () => {
+  const h = host(null, { attachments: true }), data = await boot(h);
+  const plain = await send(h, "ordinary text without files");
+  assert.equal(plain.backend, "agent"); assert.equal((await settle(h, plain.jobId)).status, "done");
+  const create = h.operations.find(operation => operation.operation === "session/create").args[0];
+  assert.equal(create.mode, "plan"); assert.notEqual(create.projectPath, "D:/projects/A");
+  assert.notEqual(h.prompts[0].sessionId, data.context.sessionId); assert.deepEqual(Array.from(h.prompts[0].attachments), []);
+  const second = await send(h, "follow up without files"); await settle(h, second.jobId);
+  const current = await h.api.onPanelInvoke("chat.context"), target = { ...current.context, conversationId: current.snapshot.activeId };
+  const file = await attachThroughPanel(h, target);
+  const third = await h.api.onPanelInvoke("chat.send", { ...target, text: "now read this", attachments: [file] }); await settle(h, third.jobId);
+  assert.equal(h.operations.filter(operation => operation.operation === "session/create").length, 1);
+  assert.equal(h.prompts.at(-1).attachments.length, 1); assert.equal(h.completions.length, 0);
+  assert.ok(h.operations.filter(operation => operation.operation === "agent/prompt" || operation.operation === "agent/abort").every(operation => operation.args[0].sessionId !== data.context.sessionId));
+});
+test("standalone text and restored pre-Agent history use Plan and replay side history only", async () => {
+  const initial = { version: 2, projects: [{ key: "general", name: "Standalone", state: { activeId: "old", conversations: [{ id: "old", title: "old text", messages: [{ role: "user", content: "SAVED-SIDEBAR-810" }, { role: "assistant", content: "SAVED-ANSWER-811" }] }] } }] };
+  const h = host(initial); h.switchTo("standalone", null); await boot(h);
+  const sent = await send(h, "NEW-QUESTION-812"); assert.equal(sent.backend, "agent"); await settle(h, sent.jobId);
+  assert.match(h.prompts[0].content, /SAVED-SIDEBAR-810/); assert.match(h.prompts[0].content, /SAVED-ANSWER-811/); assert.match(h.prompts[0].content, /NEW-QUESTION-812/);
+  assert.ok(!h.prompts[0].content.includes("context:a1")); assert.equal(h.completions.length, 0);
+  assert.equal(h.operations.find(operation => operation.operation === "session/create").args[0].mode, "plan");
+});
+test("plain text refuses an unsupported host and permission failures never fall back to completion", async () => {
+  const unavailable = host(null, { unsupported: true }); await boot(unavailable);
+  await assert.rejects(send(unavailable, "plain text"), { code: "ATTACHMENTS_UNSUPPORTED" });
+  assert.equal(unavailable.prompts.length, 0); assert.equal(unavailable.completions.length, 0);
+  const denied = host(null, { promptFailure: true }); await boot(denied);
+  const result = await settle(denied, (await send(denied, "plain text")).jobId);
+  assert.equal(result.status, "error"); assert.equal(result.code, "PERMISSION_DENIED");
+  assert.equal(denied.completions.length, 0); assert.equal(denied.prompts.length, 1);
+});
+
+test("a path in the submitted user text becomes a scoped reference without uploading or preloading", async () => {
+  const h = host(); await boot(h); h.files.set("/sources/note.md", "SOURCE-NOT-PRELOADED");
+  const result = await send(h, '请读取 "/sources/note.md"'); await settle(h, result.jobId);
+  assert.ok(h.prompts[0].content.includes("/sources/note.md")); assert.ok(!h.prompts[0].content.includes("SOURCE-NOT-PRELOADED"));
+  assert.equal(h.prompts[0].attachments.length, 0);
+  const catalog = [...h.files.entries()].find(([p]) => p.endsWith("catalog.json")); assert.ok(catalog);
+  assert.equal(JSON.parse(catalog[1]).sources.length, 1);
+  assert.ok(![...h.files.keys()].some(p => /\/files\/file-/.test(p)));
+});
+test("source registration rejects stale conversations and source IDs cannot cross projects", async () => {
+  const h = host(), booted = await boot(h), activeId = booted.snapshot.activeId; h.files.set("/sources/note.md", "source");
+  await assert.rejects(h.api.onPanelInvoke("chat.attachment.reference", { ...booted.context, conversationId: "stale", path: "/sources/note.md" }), { code: "STALE_CONTEXT" });
+  const file = await h.api.onPanelInvoke("chat.attachment.reference", { ...booted.context, conversationId: activeId, path: "/sources/note.md" });
+  h.switchTo("b1", "D:/projects/B", "project-b"); const next = await h.api.onPanelInvoke("chat.context");
+  await assert.rejects(h.api.onPanelInvoke("chat.send", { ...next.context, conversationId: next.snapshot.activeId, text: "read", attachments: [file] }), { code: "INVALID_ATTACHMENT" });
+  assert.equal(h.prompts.length, 0);
+});
+
+test("ten references are accepted through both selected attachments and user text; eleven fail", async () => {
+  const h = host(), booted = await boot(h), scope = { ...booted.context, conversationId: booted.snapshot.activeId }, files = [], paths = [];
+  for (let i = 0; i < 11; i++) { const source = `/sources/file-${i}.txt`; h.files.set(source, "content"); paths.push(source); if (i < 10) files.push(await h.api.onPanelInvoke("chat.attachment.reference", { ...scope, path: source })); }
+  const selected = await h.api.onPanelInvoke("chat.send", { ...scope, text: "read", attachments: files }); assert.equal((await settle(h, selected.jobId)).status, "done");
+  const typed = await h.api.onPanelInvoke("chat.send", { ...scope, text: paths.slice(0, 10).join(" ") }); assert.equal((await settle(h, typed.jobId)).status, "done");
+  await assert.rejects(h.api.onPanelInvoke("chat.send", { ...scope, text: paths.join(" ") }), /ten/);
+  await assert.rejects(h.api.onPanelInvoke("chat.send", { ...scope, text: "read", attachments: [...files, files[0]] }), /ten/);
 });

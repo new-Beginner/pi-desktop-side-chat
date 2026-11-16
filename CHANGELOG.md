@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.18
+
+- Raise all plugin file intake/reference checks to 500 MB (500,000,000 bytes) and single-send file/converted-output checks to 10, including the actual Agent guard and official source reader.
+- Remove the conflicting 20 MB cumulative queue/cache quota. Source originals remain copy-free; pathless inputs, converted image pages and old attachments still need storage and are not deleted.
+- Retain read-only authorization, isolation, supported formats and decoded-content budgets; add boundary/no-copy/ten-file regressions. Use a new full guard entry to avoid cached old factories; no new permissions.
+
+## 0.1.17
+
+- Reference real local File paths and explicit absolute paths in submitted user messages without copying originals; keep pathless clipboard/picker uploads and old cached histories compatible.
+- Scope source reads to exact per-conversation registered files, revalidate canonical paths and reject directories, neighboring files and changed link targets; keep native host authorization and all write/control denials.
+- Reuse Office/TIFF conversion through official fs.read with a user-selected root and bounded readRange; quote Office text in the prompt and cache only necessary converted image pages. Add the fs.read grant and a new complete guard entry for Runner factory-cache compatibility.
+- Retain file/output/content limits, apply the 20 MB cache budget only to actually saved bytes, and add backend, path/parser, reader authorization and browser no-upload regressions. No layout, model, draft-return or host-source changes.
+
+## 0.1.16
+
+- Route every sidebar message, including ordinary text and standalone chats, through the existing independent read-only Plan Agent backend; remove agent.complete calls and fallback behavior.
+- Keep Read/Glob/Grep, per-conversation scope, guard acknowledgement, strict status identity, side-only aborts, optional main context and draft-only return. Reuse the unchanged versioned guard entry.
+- Remove the unused agent.complete permission, generalize startup guidance and preserve all seven reasoning values through session/create, including explicit off.
+- Add text-only guard, backend-reuse, legacy-history replay and failure-without-fallback regressions. Leave attachment input, formats, quotas, filesystem scope and layout unchanged.
+
 ## 0.1.15
 
 - Hide inactive, untitled and message-free project buckets from the history picker; keep the current project, standalone and unassigned legacy entries.
